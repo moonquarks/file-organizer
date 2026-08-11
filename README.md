@@ -1,5 +1,5 @@
 # File Organizer (备赛资源管理器)
-
+（这个README也是哈基米写，补药压力窝QWQ）
 A modern, high-aesthetics desktop File Explorer/Manager replacement built with Electron, HTML5, CSS3, and JavaScript (ES6+). Designed to replace boring default operating system file explorers with an interactive custom workspace.
 
 这是一个基于 Electron 开发的现代化、高颜值桌面文件管理器，旨在为特定备赛或工作目录提供深度定制的文件整理与探索体验。
