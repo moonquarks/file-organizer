@@ -1,0 +1,35 @@
+{
+  "name": "file-organizer",
+  "version": "1.0.0",
+  "description": "A modern desktop File Explorer/Manager replacement",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.aigc.fileorganizer",
+    "win": {
+      "target": "nsis",
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "File Organizer",
+      "artifactName": "FileOrganizerSetup.exe"
+    },
+    "directories": {
+      "output": "../app"
+    }
+  },
+  "author": "Antigravity",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
+  }
+}

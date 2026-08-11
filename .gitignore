@@ -1,0 +1,8 @@
+node_modules/
+dist/
+app/
+config.json
+*.exe
+*.blockmap
+*.log
+.DS_Store

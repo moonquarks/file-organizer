@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>File Organizer</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="logo">
+        <i class="fa-solid fa-compass"></i>
+        <h2>File Organizer</h2>
+      </div>
+
+      <div class="sidebar-section">
+        <span class="section-title">快速通道</span>
+        <div class="quick-links" id="sidebar-quick-links">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <span class="section-title">设置</span>
+        <button class="nav-item" id="nav-settings-btn">
+          <i class="fa-solid fa-sliders"></i> 工作区路径
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="path-display">
+          <span class="path-label">当前根目录:</span>
+          <span class="path-value text-ellipsis" id="root-path-display">未加载</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Panel -->
+    <main class="main-content">
+      <!-- File Explorer View -->
+      <section id="explorer-view" class="view-panel active">
+        <!-- Top Toolbar -->
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <button class="tool-btn" id="btn-back" title="返回上一级">
+              <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <div class="breadcrumbs" id="breadcrumbs-container">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+          
+          <div class="toolbar-right">
+            <div class="search-box">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="search-input" placeholder="搜索当前目录...">
+            </div>
+            <button class="action-btn success" id="btn-new-folder">
+              <i class="fa-solid fa-folder-plus"></i> 新建文件夹
+            </button>
+          </div>
+        </div>
+
+        <!-- Directory/Files View Grid -->
+        <div class="explorer-grid" id="explorer-grid">
+          <!-- JS Rendered File Cards -->
+        </div>
+      </section>
+
+      <!-- Settings Page -->
+      <section id="settings-view" class="view-panel">
+        <header>
+          <h1>工作区管理</h1>
+          <p>修改或设置当前文件管理器扫描的工作根目录</p>
+        </header>
+
+        <div class="settings-card">
+          <h3>工作区根路径</h3>
+          <p class="description">在此输入你需要管理的文件文件夹的绝对路径。</p>
+          <div class="path-input-group">
+            <input type="text" id="input-root-path" placeholder="例如: C:\Users\xingc\OneDrive\Desktop\HMUNChina2026！">
+            <button class="action-btn primary" id="btn-save-path">保存并刷新</button>
+          </div>
+          <span class="error-msg" id="settings-error"></span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal: Create Folder -->
+  <div class="modal-overlay" id="new-folder-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-folder-plus"></i> 新建文件夹</h3>
+        <button class="close-modal-btn" onclick="closeModal('new-folder-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="input-folder-name" placeholder="请输入文件夹名称...">
+        <span class="error-msg" id="folder-error"></span>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" onclick="closeModal('new-folder-modal')">取消</button>
+        <button class="modal-btn primary" id="btn-confirm-folder">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Rename Item -->
+  <div class="modal-overlay" id="rename-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-pen-to-square"></i> 重命名</h3>
+        <button class="close-modal-btn" onclick="closeModal('rename-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="input-rename-name" placeholder="请输入新名称...">
+        <span class="error-msg" id="rename-error"></span>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" onclick="closeModal('rename-modal')">取消</button>
+        <button class="modal-btn primary" id="btn-confirm-rename">重命名</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Move File -->
+  <div class="modal-overlay" id="move-file-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-reply"></i> 移动文件分类</h3>
+        <button class="close-modal-btn" onclick="closeModal('move-file-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="file-move-desc" id="move-file-name">准备移动文件: filename.txt</p>
+        <p class="description">请选择要将其移动到的文件夹目标：</p>
+        <div class="folders-selection-list" id="move-folders-list">
+          <!-- JS Rendered folders list -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" onclick="closeModal('move-file-modal')">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Message -->
+  <div id="toast" class="toast">操作成功</div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
