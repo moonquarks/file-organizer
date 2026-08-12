@@ -134,21 +134,27 @@ function switchView(viewName) {
   if (viewName === 'explorer') {
     explorerView.classList.add('active');
     navExplorerBtn.classList.add('active');
-  } else if (viewName === 'settings') {
-    settingsView.classList.add('active');
-    navSettingsBtn.classList.add('active');
-  } else if (viewName === 'audio') {
-    audioView.classList.add('active');
-    navAudioBtn.classList.add('active');
-    loadAudioPlaylist();
-  } else if (viewName === 'notes') {
-    notesView.classList.add('active');
-    navNotesBtn.classList.add('active');
-    loadNotesList();
-  } else if (viewName === 'record') {
-    recordView.classList.add('active');
-    navRecordBtn.classList.add('active');
-    loadRecordingsList();
+    updateBatchBarUI(); // 仅在资源管理器视图中恢复显示选中状态
+  } else {
+    // 切换到其他视图时，必须强制隐藏多选批量操作栏，避免遮挡底部保存等重要按钮
+    batchActionBar.classList.remove('active');
+    
+    if (viewName === 'settings') {
+      settingsView.classList.add('active');
+      navSettingsBtn.classList.add('active');
+    } else if (viewName === 'audio') {
+      audioView.classList.add('active');
+      navAudioBtn.classList.add('active');
+      loadAudioPlaylist();
+    } else if (viewName === 'notes') {
+      notesView.classList.add('active');
+      navNotesBtn.classList.add('active');
+      loadNotesList();
+    } else if (viewName === 'record') {
+      recordView.classList.add('active');
+      navRecordBtn.classList.add('active');
+      loadRecordingsList();
+    }
   }
 }
 
