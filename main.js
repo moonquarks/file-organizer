@@ -649,6 +649,53 @@ ipcMain.handle('save-record-file', async (event, filename, buffer) => {
       fs.mkdirSync(recordDir, { recursive: true });
     }
     const filePath = path.join(recordDir, filename);
+    
+    // 如果文件名是 mp3，则将传入的 PCM WAV 二进制缓冲数据自动转换为标准 MP3
+    if (filename.endsWith('.mp3')) {
+      const wavBuffer = Buffer.from(buffer);
+      if (wavBuffer.length >= 44) {
+        const numChannels = wavBuffer.readUInt16LE(22);
+        const sampleRate = wavBuffer.readUInt32LE(24);
+        const bitsPerSample = wavBuffer.readUInt16LE(34);
+        
+        if (numChannels === 2 && bitsPerSample === 16) {
+          const dataSub = wavBuffer.subarray(44);
+          const numSamples = Math.floor(dataSub.length / 4); // 4字节对应一个采样点 (2声道 * 2字节)
+          
+          const leftChannel = new Int16Array(numSamples);
+          const rightChannel = new Int16Array(numSamples);
+          
+          for (let i = 0; i < numSamples; i++) {
+            leftChannel[i] = dataSub.readInt16LE(i * 4);
+            rightChannel[i] = dataSub.readInt16LE(i * 4 + 2);
+          }
+          
+          const lamejs = require('lamejs');
+          const mp3encoder = new lamejs.Mp3Encoder(2, sampleRate, 128); // 双声道，128kbps 立体声
+          const mp3Chunks = [];
+          
+          const sampleBlockSize = 1152;
+          for (let i = 0; i < numSamples; i += sampleBlockSize) {
+            const leftChunk = leftChannel.subarray(i, i + sampleBlockSize);
+            const rightChunk = rightChannel.subarray(i, i + sampleBlockSize);
+            const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+            if (mp3buf.length > 0) {
+              mp3Chunks.push(Buffer.from(mp3buf));
+            }
+          }
+          const endBuf = mp3encoder.flush();
+          if (endBuf.length > 0) {
+            mp3Chunks.push(Buffer.from(endBuf));
+          }
+          
+          const mp3Buffer = Buffer.concat(mp3Chunks);
+          fs.writeFileSync(filePath, mp3Buffer);
+          return { success: true, filePath };
+        }
+      }
+    }
+    
+    // 降级回退：普通写入
     fs.writeFileSync(filePath, Buffer.from(buffer));
     return { success: true, filePath };
   } catch (err) {

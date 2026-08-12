@@ -1606,11 +1606,11 @@ async function stopRecording() {
       const wavBlob = exportWAV(wavAudioChunks, sampleRate);
       const arrayBuffer = await wavBlob.arrayBuffer();
       const now = new Date();
-      const filename = `Record_${formatDateForFile(now)}.wav`;
+      const filename = `Record_${formatDateForFile(now)}.mp3`;
       
       const res = await window.api.saveRecordFile(filename, new Uint8Array(arrayBuffer));
       if (res.success) {
-        showToast('录音已保存为高保真 WAV 格式！');
+        showToast('录音已保存为 MP3 压缩格式！');
         loadRecordingsList();
       } else {
         showToast('保存录音失败: ' + res.error, true);
