@@ -430,11 +430,12 @@ ipcMain.handle('open-item', async (event, targetFullPath) => {
 });
 
 // IPC Handler: 保存 API 配置
-ipcMain.handle('save-api-settings', (event, { apiType, apiKey, apiBaseUrl, apiModel }) => {
+ipcMain.handle('save-api-settings', (event, { apiType, apiKey, apiBaseUrl, apiModel, apiStream }) => {
   currentConfig.apiType = apiType;
   currentConfig.apiKey = apiKey;
   currentConfig.apiBaseUrl = apiBaseUrl;
   currentConfig.apiModel = apiModel;
+  currentConfig.apiStream = apiStream;
   saveConfig();
   return { success: true, config: currentConfig };
 });
@@ -808,8 +809,10 @@ ipcMain.handle('interpret-audio-slice', async (event, base64Data, targetLang, re
     if (isGemini) {
       const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
       const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
-      // 使用 streamGenerateContent 接口实现流式返回
-      const url = `${baseUrl}/v1/models/${modelName}:streamGenerateContent?key=${currentConfig.apiKey}`;
+      
+      const isStream = currentConfig.apiStream !== false;
+      const method = isStream ? 'streamGenerateContent' : 'generateContent';
+      const url = `${baseUrl}/v1/models/${modelName}:${method}?key=${currentConfig.apiKey}`;
       
       const promptText = `You are a professional simultaneous interpreter for Model United Nations debates.
 Please interpret the spoken audio chunk.
@@ -851,6 +854,15 @@ Directly output the result in the above format, do not include any markdown bold
       if (!response.ok) {
         const errText = await response.text();
         return { success: false, error: `API 错误 (HTTP ${response.status}): ${errText}` };
+      }
+
+      if (!isStream) {
+        const json = await response.json();
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+          return { success: false, error: 'API 返回内容为空' };
+        }
+        return { success: true, text };
       }
 
       // 流式解析 Gemini 的 JSON 数组响应块
@@ -974,6 +986,7 @@ ${transcriptionText}
 The current translation configuration is: ${targetLang === 'zh-to-en' ? 'Chinese to English' : 'English to Chinese'}.
 Directly output the result in the above format, do not include any markdown bolding, prefixes, explanations, or headings.`;
 
+      const isStream = currentConfig.apiStream !== false;
       const chatResponse = await fetch(chatUrl, {
         method: 'POST',
         headers: {
@@ -984,13 +997,22 @@ Directly output the result in the above format, do not include any markdown bold
           model: modelName,
           messages: [{ role: 'user', content: promptText }],
           temperature: 0.3,
-          stream: true // 启用 SSE 流式输出
+          stream: isStream // 动态启用 SSE 流式输出
         })
       });
 
       if (!chatResponse.ok) {
         const errText = await chatResponse.text();
         return { success: false, error: `同传翻译 API 错误 (HTTP ${chatResponse.status}): ${errText}` };
+      }
+
+      if (!isStream) {
+        const chatJson = await chatResponse.json();
+        const textResult = chatJson.choices?.[0]?.message?.content;
+        if (!textResult) {
+          return { success: false, error: '同传翻译返回内容为空' };
+        }
+        return { success: true, text: textResult.trim() };
       }
 
       // 流式解析 OpenAI/DeepSeek SSE data: 格式

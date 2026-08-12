@@ -146,6 +146,10 @@
                 <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">API 代理接口地址 (选填，为空则使用官方默认域名)</label>
                 <input type="text" id="input-api-url" placeholder="例如: https://api.yourproxy.com" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
               </div>
+              <div class="form-group" style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="checkbox-api-stream" style="width: 16px; height: 16px; cursor: pointer;">
+                <label for="checkbox-api-stream" style="font-size: 0.85rem; color: var(--text-main); cursor: pointer; user-select: none;">启用同声传译流式输出 (打字机效果)</label>
+              </div>
               <button class="action-btn primary" id="btn-save-api-settings">保存 API 配置</button>
             </div>
             <span class="error-msg" id="api-settings-error"></span>

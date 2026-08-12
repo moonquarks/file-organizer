@@ -95,6 +95,7 @@ const selectApiType = document.getElementById('select-api-type');
 const inputApiKey = document.getElementById('input-api-key');
 const inputApiUrl = document.getElementById('input-api-url');
 const inputApiModel = document.getElementById('input-api-model');
+const checkboxApiStream = document.getElementById('checkbox-api-stream');
 const btnSaveApiSettings = document.getElementById('btn-save-api-settings');
 const apiSettingsError = document.getElementById('api-settings-error');
 
@@ -196,6 +197,7 @@ async function loadConfigAndScan() {
       inputApiKey.value = currentWorkspaceConfig.apiKey || '';
       inputApiUrl.value = currentWorkspaceConfig.apiBaseUrl || '';
       inputApiModel.value = currentWorkspaceConfig.apiModel || '';
+      checkboxApiStream.checked = currentWorkspaceConfig.apiStream !== false; // 默认启用
       updateTranscribeApiStatusUI();
       
       // 加载侧边栏快速通道
@@ -659,6 +661,7 @@ btnSaveApiSettings.addEventListener('click', async () => {
   const apiKey = inputApiKey.value.trim();
   const apiBaseUrl = inputApiUrl.value.trim();
   const apiModel = inputApiModel.value.trim();
+  const apiStream = checkboxApiStream.checked;
 
   if (!apiKey) {
     apiSettingsError.textContent = 'API Key 不能为空';
@@ -668,7 +671,7 @@ btnSaveApiSettings.addEventListener('click', async () => {
   btnSaveApiSettings.disabled = true;
   apiSettingsError.textContent = '';
   try {
-    const res = await window.api.saveApiSettings({ apiType, apiKey, apiBaseUrl, apiModel });
+    const res = await window.api.saveApiSettings({ apiType, apiKey, apiBaseUrl, apiModel, apiStream });
     if (res.success) {
       showToast('API 接口配置保存成功！');
       currentWorkspaceConfig = res.config;
