@@ -102,14 +102,34 @@ app.whenReady().then(() => {
   
   // 注册安全协议拦截器，将 app-file:// 协议转存并流式传回给 HTML5 audio
   protocol.handle('app-file', (request) => {
-    const fileUrl = 'file://' + request.url.slice('app-file://'.length);
-    return net.fetch(fileUrl).catch(err => {
+    let fileUrl = '';
+    try {
+      const url = new URL(request.url);
+      let localPath = '';
+      // 如果主机名存在且长度为 1，说明 Windows 盘符（如 c 或 d）被 Chromium 错误解析为主机名了
+      if (url.hostname && url.hostname.length === 1) {
+        localPath = url.hostname + ':' + url.pathname;
+      } else {
+        localPath = url.pathname;
+        if (process.platform === 'win32' && localPath.startsWith('/')) {
+          localPath = localPath.substring(1);
+        }
+      }
+      fileUrl = 'file:///' + localPath;
+      return net.fetch(fileUrl).catch(err => {
+        try {
+          const logFile = path.join(app.getPath('userData'), 'debug_protocol.log');
+          fs.appendFileSync(logFile, `[net.fetch Error] ${new Date().toISOString()} | URL: ${request.url} -> Mapped: ${fileUrl} | Message: ${err.message}\n`);
+        } catch (e) {}
+        throw err;
+      });
+    } catch (e) {
       try {
         const logFile = path.join(app.getPath('userData'), 'debug_protocol.log');
-        fs.appendFileSync(logFile, `[net.fetch Error] ${new Date().toISOString()} | URL: ${request.url} -> Mapped: ${fileUrl} | Message: ${err.message}\n`);
-      } catch (e) {}
-      throw err;
-    });
+        fs.appendFileSync(logFile, `[Handler Fatal] ${new Date().toISOString()} | URL: ${request.url} | Message: ${e.message}\n`);
+      } catch (errLog) {}
+      throw e;
+    }
   });
 
   createWindow();
