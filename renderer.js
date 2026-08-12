@@ -1692,7 +1692,8 @@ async function processSlice(blob, relativeTimeMs) {
   
   const targetLang = selectInterpretLang.value;
   try {
-    const res = await window.api.interpretAudioSlice(base64Data, targetLang);
+    const recentHistory = interpretationHistory.slice(-2);
+    const res = await window.api.interpretAudioSlice(base64Data, targetLang, recentHistory);
     const tempElement = document.getElementById(tempId);
     if (res.success) {
       const textResult = res.text.trim();

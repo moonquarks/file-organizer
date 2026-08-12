@@ -788,7 +788,7 @@ ipcMain.handle('list-record-files', async () => {
 });
 
 // IPC Handler: 实时同声传译音频片段
-ipcMain.handle('interpret-audio-slice', async (event, base64Data, targetLang) => {
+ipcMain.handle('interpret-audio-slice', async (event, base64Data, targetLang, recentHistory = []) => {
   try {
     if (!currentConfig.apiKey) {
       return { success: false, error: '未配置 API Key，请前往设置配置。' };
@@ -797,6 +797,13 @@ ipcMain.handle('interpret-audio-slice', async (event, base64Data, targetLang) =>
     const isDeepSeek = currentConfig.apiType === 'deepseek';
     const isGemini = currentConfig.apiType === 'gemini';
     const isWhisper = currentConfig.apiType === 'openai-whisper';
+
+    // 格式化最近两次的翻译结果做上下文
+    let contextStr = '';
+    if (recentHistory && recentHistory.length > 0) {
+      contextStr = "\n\nHere is the recent translation context for reference:\n" + 
+        recentHistory.map(h => `${h.original} ||| ${h.translation}`).join('\n') + "\n";
+    }
     
     if (isGemini) {
       const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
@@ -816,7 +823,7 @@ Example 1:
 
 Example 2:
 We must address this issue immediately. ||| 我们必须立刻解决这个问题。
-
+${contextStr}
 The current translation configuration is: ${targetLang === 'zh-to-en' ? 'Chinese to English' : 'English to Chinese'}.
 Directly output the result in the above format, do not include any markdown bolding, prefixes, explanations, or headings.`;
 
@@ -907,11 +914,9 @@ Directly output the result in the above format, do not include any markdown bold
       
       // 步骤 2：使用 DeepSeek/OpenAI 进行文本翻译
       const chatBaseUrl = currentConfig.apiBaseUrl || (isDeepSeek ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
-      let chatUrl = chatBaseUrl;
-      if (!chatUrl.endsWith('/v1') && !chatUrl.endsWith('/v1/')) {
-        chatUrl = chatUrl.endsWith('/') ? `${chatUrl}v1` : `${chatUrl}/v1`;
-      }
-      chatUrl = `${chatUrl}/chat/completions`;
+      const chatUrl = chatBaseUrl.endsWith('/v1') || chatBaseUrl.endsWith('/v1/')
+        ? (chatBaseUrl.endsWith('/') ? `${chatBaseUrl}chat/completions` : `${chatBaseUrl}/chat/completions`)
+        : (chatBaseUrl.endsWith('/') ? `${chatBaseUrl}v1/chat/completions` : `${chatBaseUrl}/v1/chat/completions`);
       
       const modelName = currentConfig.apiModel || (isDeepSeek ? 'deepseek-chat' : 'gpt-4o-mini');
       const promptText = `You are a professional simultaneous interpreter for Model United Nations debates.
@@ -927,8 +932,8 @@ Example 1:
 
 Example 2:
 We must address this issue immediately. ||| 我们必须立刻解决这个问题。
-
-Transcribed speech to interpret:
+${contextStr}
+Transcribed speech to translate:
 ${transcriptionText}
 
 The current translation configuration is: ${targetLang === 'zh-to-en' ? 'Chinese to English' : 'English to Chinese'}.
