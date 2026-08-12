@@ -2005,8 +2005,8 @@ btnExportTranslate.addEventListener('click', async () => {
   let mdContent = `# 文本翻译文档\n`;
   mdContent += `* 导出时间：${new Date().toLocaleString()}\n`;
   mdContent += `* 翻译方向：${selectTextTranslateLang.value === 'to-en' ? '中译英' : '英译中'}\n\n`;
-  mdContent += `### 原文\n\`\`\`text\n${srcText}\n\`\`\`\n\n`;
-  mdContent += `### 译文\n\`\`\`text\n${resultText}\n\`\`\`\n`;
+  mdContent += `### 原文\n${srcText}\n\n`;
+  mdContent += `### 译文\n${resultText}\n`;
   
   try {
     const res = await window.api.saveNote(filename, mdContent);
