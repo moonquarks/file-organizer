@@ -1444,6 +1444,26 @@ body {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* Settings View Scrollable Fix */
+#settings-view {
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+/* Translation Tabs styling */
+.translate-tab {
+  transition: all 0.2s ease;
+}
+
+.translate-tab:hover {
+  color: var(--primary) !important;
+}
+
+.translate-tab.active {
+  color: var(--primary) !important;
+  border-bottom: 2px solid var(--primary) !important;
+}
+
 
 
 

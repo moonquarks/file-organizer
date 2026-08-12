@@ -25,6 +25,18 @@ const interpretLogContainer = document.getElementById('interpret-log-container')
 const interpretEmptyPlaceholder = document.getElementById('interpret-empty-placeholder');
 const btnSaveInterpret = document.getElementById('btn-save-interpret');
 
+// Text Translation Elements
+const tabInterpretBtn = document.getElementById('tab-interpret-btn');
+const tabTextTranslateBtn = document.getElementById('tab-text-translate-btn');
+const interpretSubView = document.getElementById('interpret-sub-view');
+const textTranslateSubView = document.getElementById('text-translate-sub-view');
+const textareaTranslateSrc = document.getElementById('textarea-translate-src');
+const selectTextTranslateLang = document.getElementById('select-text-translate-lang');
+const btnTextTranslate = document.getElementById('btn-text-translate');
+const divTranslateResult = document.getElementById('div-translate-result');
+const btnCopyTranslate = document.getElementById('btn-copy-translate');
+const btnExportTranslate = document.getElementById('btn-export-translate');
+
 const explorerGrid = document.getElementById('explorer-grid');
 const breadcrumbsContainer = document.getElementById('breadcrumbs-container');
 const btnBack = document.getElementById('btn-back');
@@ -1759,3 +1771,100 @@ function formatDateForFile(date) {
   const ss = String(date.getSeconds()).padStart(2, '0');
   return `${y}${m}${d}_${hh}${mm}${ss}`;
 }
+
+// 选项卡切换逻辑 (同声传译 / 文本翻译)
+function switchTranslateTab(tabName) {
+  if (tabName === 'interpret') {
+    tabInterpretBtn.classList.add('active');
+    tabInterpretBtn.style.color = 'var(--primary)';
+    tabInterpretBtn.style.borderBottom = '2px solid var(--primary)';
+    
+    tabTextTranslateBtn.classList.remove('active');
+    tabTextTranslateBtn.style.color = 'var(--text-muted)';
+    tabTextTranslateBtn.style.borderBottom = 'none';
+    
+    interpretSubView.style.display = 'flex';
+    textTranslateSubView.style.display = 'none';
+  } else {
+    tabTextTranslateBtn.classList.add('active');
+    tabTextTranslateBtn.style.color = 'var(--primary)';
+    tabTextTranslateBtn.style.borderBottom = '2px solid var(--primary)';
+    
+    tabInterpretBtn.classList.remove('active');
+    tabInterpretBtn.style.color = 'var(--text-muted)';
+    tabInterpretBtn.style.borderBottom = 'none';
+    
+    interpretSubView.style.display = 'none';
+    textTranslateSubView.style.display = 'flex';
+  }
+}
+
+tabInterpretBtn.addEventListener('click', () => switchTranslateTab('interpret'));
+tabTextTranslateBtn.addEventListener('click', () => switchTranslateTab('text-translate'));
+
+// 文本翻译交互逻辑
+btnTextTranslate.addEventListener('click', async () => {
+  const srcText = textareaTranslateSrc.value.trim();
+  if (!srcText) {
+    showToast('请输入要翻译的文本！', true);
+    return;
+  }
+  
+  btnTextTranslate.disabled = true;
+  btnTextTranslate.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在翻译...';
+  divTranslateResult.innerHTML = '<span style="color: var(--text-muted); font-style: italic;"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 6px;"></i> API 正在分析翻译中...</span>';
+  btnCopyTranslate.disabled = true;
+  btnExportTranslate.disabled = true;
+  
+  try {
+    const targetLang = selectTextTranslateLang.value;
+    const res = await window.api.translateText(srcText, targetLang);
+    if (res.success) {
+      divTranslateResult.textContent = res.text;
+      btnCopyTranslate.disabled = false;
+      btnExportTranslate.disabled = false;
+    } else {
+      divTranslateResult.innerHTML = `<span style="color: var(--danger);">翻译失败: ${res.error}</span>`;
+    }
+  } catch (err) {
+    divTranslateResult.innerHTML = `<span style="color: var(--danger);">网络或系统故障: ${err.message}</span>`;
+  } finally {
+    btnTextTranslate.disabled = false;
+    btnTextTranslate.innerHTML = '<i class="fa-solid fa-language"></i> 立即翻译';
+  }
+});
+
+btnCopyTranslate.addEventListener('click', () => {
+  const resultText = divTranslateResult.textContent.trim();
+  if (!resultText) return;
+  navigator.clipboard.writeText(resultText);
+  showToast('翻译结果已成功复制到剪贴板！');
+});
+
+btnExportTranslate.addEventListener('click', async () => {
+  const resultText = divTranslateResult.textContent.trim();
+  const srcText = textareaTranslateSrc.value.trim();
+  if (!resultText || !srcText) return;
+  
+  const defaultTitle = `Translation_${formatDateForFile(new Date())}`;
+  const noteTitle = prompt('请输入导出便签的名称：', defaultTitle);
+  if (!noteTitle) return;
+  
+  let mdContent = `# 文本翻译文档\n`;
+  mdContent += `* 导出时间：${new Date().toLocaleString()}\n`;
+  mdContent += `* 翻译方向：${selectTextTranslateLang.value === 'to-en' ? '中译英' : '英译中'}\n\n`;
+  mdContent += `### 原文\n\`\`\`text\n${srcText}\n\`\`\`\n\n`;
+  mdContent += `### 译文\n\`\`\`text\n${resultText}\n\`\`\`\n`;
+  
+  try {
+    const filename = noteTitle + '.md';
+    const res = await window.api.saveNote(filename, mdContent);
+    if (res.success) {
+      showToast(`已成功导出至便签：${filename}`);
+    } else {
+      showToast('导出便签失败: ' + res.error, true);
+    }
+  } catch (err) {
+    showToast('导出异常: ' + err, true);
+  }
+});

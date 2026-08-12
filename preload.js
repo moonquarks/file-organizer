@@ -22,5 +22,6 @@ contextBridge.exposeInMainWorld('api', {
   openItem: (targetFullPath) => ipcRenderer.invoke('open-item', targetFullPath),
   saveRecordFile: (filename, buffer) => ipcRenderer.invoke('save-record-file', filename, buffer),
   listRecordFiles: () => ipcRenderer.invoke('list-record-files'),
-  interpretAudioSlice: (base64Data, targetLang) => ipcRenderer.invoke('interpret-audio-slice', base64Data, targetLang)
+  interpretAudioSlice: (base64Data, targetLang) => ipcRenderer.invoke('interpret-audio-slice', base64Data, targetLang),
+  translateText: (text, targetLang) => ipcRenderer.invoke('translate-text', text, targetLang)
 });

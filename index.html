@@ -250,33 +250,77 @@
           <!-- Right Column: Simultaneous Interpretation -->
           <div class="player-right-col">
             <div class="transcription-card" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-              <div class="transcription-header" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 8px;">
-                <h3 style="display: flex; align-items: center; gap: 8px;"><i class="fa-solid fa-language" style="color:var(--primary);"></i> 智能同声传译</h3>
-                <div style="display: flex; align-items: center; gap: 12px;">
-                  <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text-main); user-select: none;">
-                    <input type="checkbox" id="checkbox-enable-interpret" style="cursor: pointer; accent-color: var(--primary);"> 开启同传
-                  </label>
-                  <select id="select-interpret-lang" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.85rem; padding: 4px 8px; border-radius: 6px; outline: none; cursor: pointer;">
-                    <option value="zh-to-en">中 ➔ 英</option>
-                    <option value="en-to-zh">英 ➔ 中</option>
+              <!-- Tab Headers -->
+              <div style="display: flex; gap: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 12px;">
+                <span class="translate-tab active" id="tab-interpret-btn" style="cursor: pointer; font-size: 0.95rem; font-weight: 600; color: var(--primary); border-bottom: 2px solid var(--primary); padding-bottom: 4px; display: flex; align-items: center; gap: 6px; user-select: none;">
+                  <i class="fa-solid fa-microphone-lines"></i> 同声传译
+                </span>
+                <span class="translate-tab" id="tab-text-translate-btn" style="cursor: pointer; font-size: 0.95rem; font-weight: 500; color: var(--text-muted); padding-bottom: 4px; display: flex; align-items: center; gap: 6px; user-select: none;">
+                  <i class="fa-solid fa-language"></i> 文本翻译
+                </span>
+              </div>
+              
+              <!-- Sub Container 1: Sim-Trans -->
+              <div id="interpret-sub-view" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <span style="font-size: 0.85rem; color: var(--text-muted);">录音分片同声传译</span>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text-main); user-select: none;">
+                      <input type="checkbox" id="checkbox-enable-interpret" style="cursor: pointer; accent-color: var(--primary);"> 开启同传
+                    </label>
+                    <select id="select-interpret-lang" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.85rem; padding: 4px 8px; border-radius: 6px; outline: none; cursor: pointer;">
+                      <option value="zh-to-en">中 ➔ 英</option>
+                      <option value="en-to-zh">英 ➔ 中</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <!-- Interpretation Log Window -->
+                <div class="transcription-body" id="interpret-log-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 12px; background: rgba(0,0,0,0.15); border-radius: 8px; margin: 8px 0; border: 1px solid rgba(255,255,255,0.03);">
+                  <div class="transcription-empty" id="interpret-empty-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 8px; text-align: center; padding: 32px 16px;">
+                    <i class="fa-solid fa-globe" style="font-size: 2.5rem; opacity: 0.25; margin-bottom: 8px;"></i>
+                    <p style="font-size: 0.9rem; font-weight: 500;">同声传译面板</p>
+                    <p style="font-size: 0.8rem; max-width: 260px; line-height: 1.5;">勾选上方“开启同传”，点击录音，系统将每隔 5 秒对您说的话进行翻译和转写对齐。</p>
+                  </div>
+                </div>
+                
+                <div class="transcription-footer" style="padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                  <span style="font-size: 0.75rem; color: var(--text-muted);"><i class="fa-solid fa-circle-info"></i> 可将本次同传转录文档直接导出为便签</span>
+                  <button class="action-btn primary" id="btn-save-interpret" style="padding: 8px 14px; font-size: 0.8rem;" disabled>
+                    <i class="fa-solid fa-file-export"></i> 导出为便签
+                  </button>
+                </div>
+              </div>
+
+              <!-- Sub Container 2: Text Translation (Hidden by default) -->
+              <div id="text-translate-sub-view" style="display: none; flex-direction: column; flex: 1; overflow: hidden; gap: 12px;">
+                <textarea id="textarea-translate-src" placeholder="在此输入需要翻译的文本..." style="width: 100%; height: 120px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; color: var(--text-main); font-size: 0.85rem; resize: none; outline: none; box-sizing: border-box; font-family: inherit; line-height: 1.5;"></textarea>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <select id="select-text-translate-lang" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.85rem; padding: 6px 12px; border-radius: 6px; outline: none; cursor: pointer;">
+                    <option value="to-en">翻译为英文 (➔ EN)</option>
+                    <option value="to-zh">翻译为中文 (➔ ZH)</option>
                   </select>
+                  <button class="action-btn primary" id="btn-text-translate" style="padding: 8px 16px; font-size: 0.85rem;">
+                    <i class="fa-solid fa-language"></i> 立即翻译
+                  </button>
                 </div>
-              </div>
-              
-              <!-- Interpretation Log Window -->
-              <div class="transcription-body" id="interpret-log-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 12px; background: rgba(0,0,0,0.15); border-radius: 8px; margin: 8px 0; border: 1px solid rgba(255,255,255,0.03);">
-                <div class="transcription-empty" id="interpret-empty-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 8px; text-align: center; padding: 32px 16px;">
-                  <i class="fa-solid fa-globe" style="font-size: 2.5rem; opacity: 0.25; margin-bottom: 8px;"></i>
-                  <p style="font-size: 0.9rem; font-weight: 500;">同声传译面板</p>
-                  <p style="font-size: 0.8rem; max-width: 260px; line-height: 1.5;">勾选上方“开启同传”，点击录音，系统将每隔 5 秒对您说的话进行翻译和转写对齐。</p>
+
+                <div style="display: flex; flex-direction: column; flex: 1; overflow: hidden; gap: 6px; margin-top: 4px;">
+                  <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">翻译结果：</span>
+                  <div id="div-translate-result" style="flex: 1; overflow-y: auto; background: rgba(0,0,0,0.15); border-radius: 8px; padding: 12px; color: var(--text-main); font-size: 0.85rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.03); white-space: pre-wrap; word-break: break-all;">
+                    <span style="color: var(--text-muted); font-style: italic;">等待翻译输入...</span>
+                  </div>
                 </div>
-              </div>
-              
-              <div class="transcription-footer" style="padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                <span style="font-size: 0.75rem; color: var(--text-muted);"><i class="fa-solid fa-circle-info"></i> 可将本次同传转录文档直接导出为便签</span>
-                <button class="action-btn primary" id="btn-save-interpret" style="padding: 8px 14px; font-size: 0.8rem;" disabled>
-                  <i class="fa-solid fa-file-export"></i> 导出为便签
-                </button>
+
+                <div class="transcription-footer" style="padding-top: 8px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px;">
+                  <button class="action-btn secondary" id="btn-copy-translate" style="padding: 6px 12px; font-size: 0.75rem;" disabled>
+                    <i class="fa-regular fa-copy"></i> 复制结果
+                  </button>
+                  <button class="action-btn success" id="btn-export-translate" style="padding: 6px 12px; font-size: 0.75rem;" disabled>
+                    <i class="fa-solid fa-file-export"></i> 导出为便签
+                  </button>
+                </div>
               </div>
             </div>
           </div>

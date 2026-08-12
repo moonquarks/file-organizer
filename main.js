@@ -661,4 +661,54 @@ Directly output the result in the above format, do not include any markdown bold
   }
 });
 
+// IPC Handler: 纯文本翻译功能
+ipcMain.handle('translate-text', async (event, text, targetLang) => {
+  try {
+    if (!currentConfig.apiKey) {
+      return { success: false, error: '未配置 API Key，请前往“工作区路径”设置。' };
+    }
+    if (currentConfig.apiType === 'gemini') {
+      const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
+      const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
+      const url = `${baseUrl}/v1/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
+      
+      const promptText = `You are a professional translator.
+Please translate the following text into ${targetLang === 'to-en' ? 'English' : 'Chinese'}.
+Translate exactly what is provided. Keep the tone natural and appropriate for Model United Nations debates or academic contexts if relevant.
+Do not output any introductory or explanatory text. Direct output the translated result only.
+
+Text to translate:
+${text}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: promptText
+            }]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return { success: false, error: `API 错误 (HTTP ${response.status}): ${errText}` };
+      }
+
+      const json = await response.json();
+      const translatedText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!translatedText) {
+        return { success: false, error: 'API 接口返回了空翻译结果。' };
+      }
+      return { success: true, text: translatedText.trim() };
+    } else {
+      return { success: false, error: '文本翻译暂仅支持 Gemini API，请配置 API 类别为 Gemini。' };
+    }
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 
