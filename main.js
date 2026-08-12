@@ -347,7 +347,7 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
       const base64Data = fs.readFileSync(filePath).toString('base64');
       const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
       const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
-      const url = `${baseUrl}/v1beta/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
+      const url = `${baseUrl}/v1/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -603,7 +603,7 @@ ipcMain.handle('interpret-audio-slice', async (event, base64Data, targetLang) =>
     if (currentConfig.apiType === 'gemini') {
       const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
       const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
-      const url = `${baseUrl}/v1beta/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
+      const url = `${baseUrl}/v1/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
       
       const promptText = `You are a professional simultaneous interpreter for Model United Nations debates.
 Please interpret the spoken audio chunk.
