@@ -719,6 +719,11 @@ btnTranscribe.addEventListener('click', async () => {
       transcriptionCache[track.fullPath] = res.text;
       transcriptionTextContainer.textContent = res.text;
     } else {
+      if (res.error === 'TRANSCRIPTION_ABORTED') {
+        // 如果是中途取消/切换文件，我们静默忽略，不进行任何 UI 报错渲染
+        console.log('Transcription aborted.');
+        return;
+      }
       showToast('转写失败: ' + res.error, true);
       transcriptionTextContainer.innerHTML = `
         <div class="transcription-empty" style="color: var(--danger);">
@@ -797,6 +802,10 @@ function renderPlaylistUI() {
 
 window.playTrack = function(index) {
   if (index < 0 || index >= audioPlaylist.length) return;
+  
+  // 切换音频时，立即中断正在进行中的语音转文字 API 请求，并重置转写按钮状态
+  window.api.abortTranscription().catch(() => {});
+  btnTranscribe.disabled = false;
   
   audioCurrentIndex = index;
   const track = audioPlaylist[index];

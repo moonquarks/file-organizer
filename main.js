@@ -414,7 +414,25 @@ ipcMain.handle('save-api-settings', (event, { apiType, apiKey, apiBaseUrl, apiMo
 });
 
 // IPC Handler: 语音转文字转录 (使用 Gemini 1.5 Flash 或 OpenAI Whisper)
+let transcribeAbortController = null;
+
+ipcMain.handle('abort-transcription', () => {
+  if (transcribeAbortController) {
+    transcribeAbortController.abort();
+    transcribeAbortController = null;
+  }
+  return { success: true };
+});
+
 ipcMain.handle('transcribe-audio', async (event, filePath) => {
+  if (transcribeAbortController) {
+    try {
+      transcribeAbortController.abort();
+    } catch(e) {}
+  }
+  transcribeAbortController = new AbortController();
+  const signal = transcribeAbortController.signal;
+
   try {
     if (!currentConfig.apiKey) {
       return { success: false, error: '请先在工作区“设置”中配置您的 API Key。' };
@@ -451,7 +469,8 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
               }
             ]
           }]
-        })
+        }),
+        signal: signal
       });
 
       if (!response.ok) {
@@ -487,7 +506,8 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
         headers: {
           'Authorization': `Bearer ${currentConfig.apiKey}`
         },
-        body: formData
+        body: formData,
+        signal: signal
       });
 
       if (!response.ok) {
@@ -504,7 +524,14 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
 
     return { success: false, error: '未知的 API 类型配置' };
   } catch (err) {
+    if (err.name === 'AbortError') {
+      return { success: false, error: 'TRANSCRIPTION_ABORTED' };
+    }
     return { success: false, error: err.message };
+  } finally {
+    if (transcribeAbortController && transcribeAbortController.signal === signal) {
+      transcribeAbortController = null;
+    }
   }
 });
 

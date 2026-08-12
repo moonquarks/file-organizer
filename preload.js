@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('api', {
   listRecordFiles: () => ipcRenderer.invoke('list-record-files'),
   interpretAudioSlice: (base64Data, targetLang) => ipcRenderer.invoke('interpret-audio-slice', base64Data, targetLang),
   translateText: (text, targetLang) => ipcRenderer.invoke('translate-text', text, targetLang),
+  abortTranscription: () => ipcRenderer.invoke('abort-transcription'),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   maximizeWindow: () => ipcRenderer.send('window-maximize'),
   closeWindow: () => ipcRenderer.send('window-close')
