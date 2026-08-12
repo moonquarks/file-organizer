@@ -4,6 +4,7 @@ let currentPathData = { folders: [], files: [] };
 
 // DOM 元素
 const explorerView = document.getElementById('explorer-view');
+const navExplorerBtn = document.getElementById('nav-explorer-btn');
 const settingsView = document.getElementById('settings-view');
 const navSettingsBtn = document.getElementById('nav-settings-btn');
 const rootPathDisplay = document.getElementById('root-path-display');
@@ -104,6 +105,7 @@ function switchView(viewName) {
   
   if (viewName === 'explorer') {
     explorerView.classList.add('active');
+    navExplorerBtn.classList.add('active');
   } else if (viewName === 'settings') {
     settingsView.classList.add('active');
     navSettingsBtn.classList.add('active');
@@ -590,6 +592,11 @@ navNotesBtn.addEventListener('click', () => {
   switchView('notes');
 });
 
+// navExplorerBtn 点击事件
+navExplorerBtn.addEventListener('click', () => {
+  switchView('explorer');
+});
+
 // --- 音频播放器逻辑 ---
 let audioPlaylist = [];
 let audioCurrentIndex = -1;
@@ -707,8 +714,21 @@ async function loadAudioPlaylist() {
 }
 
 function renderPlaylistUI() {
+  const badge = document.getElementById('playlist-count-badge');
+  if (badge) {
+    badge.textContent = audioPlaylist.length;
+    badge.style.display = audioPlaylist.length > 0 ? 'inline-block' : 'none';
+  }
+
   if (audioPlaylist.length === 0) {
-    playlistContainer.innerHTML = `<p style="padding: 16px; color: var(--text-muted); text-align: center;">工作区目录中未找到任何 mp3 / ogg 音频文件</p>`;
+    playlistContainer.innerHTML = `
+      <div style="padding: 24px 16px; color: var(--text-muted); text-align: center; font-size: 0.85rem; line-height: 1.6;">
+        <i class="fa-solid fa-folder-open" style="font-size: 2rem; margin-bottom: 8px; opacity: 0.3;"></i>
+        <p>在当前工作区目录：</p>
+        <code style="word-break: break-all; color: var(--primary); background: rgba(0,0,0,0.25); padding: 4px 8px; border-radius: 4px; display: block; margin: 6px 0;">${currentWorkspaceConfig.rootPath || '未配置'}</code>
+        <p>下未扫描到任何支持的音频文件 (.mp3, .ogg, .wav, .m4a, .aac, .flac)</p>
+      </div>
+    `;
     return;
   }
 
@@ -871,41 +891,138 @@ function renderMarkdown(md) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
   
-  // 渲染标题 (h1, h2, h3)
+  // 1. 预处理代码块 (以防其内部的 MD 符号被渲染)
+  const codeBlocks = [];
+  html = html.replace(/\`\`\`([\s\S]*?)\`\`\`/g, (match, code) => {
+    codeBlocks.push(code);
+    return `<!--CODEBLOCK_${codeBlocks.length - 1}-->`;
+  });
+  
+  // 预处理行内代码
+  const inlineCodes = [];
+  html = html.replace(/\`(.*?)\`/g, (match, code) => {
+    inlineCodes.push(code);
+    return `<!--INLINECODE_${inlineCodes.length - 1}-->`;
+  });
+
+  // 2. 渲染水平线 (---, ***)
+  html = html.replace(/^\s*([-*_])\1{2,}\s*$/gm, '<hr>');
+
+  // 3. 渲染标题 (h1, h2, h3)
   html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
   html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
   html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-  
-  // 渲染加粗与斜体
+
+  // 4. 渲染引用块
+  html = html.replace(/^\>\s+(.*$)/gim, '<blockquote>$1</blockquote>');
+
+  // 5. 渲染删除线 ~~text~~
+  html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
+
+  // 6. 渲染加粗与斜体
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  html = html.replace(/__(.*?)__/g, '<strong>$1</strong>');
+  html = html.replace(/_(.*?)_/g, '<em>$1</em>');
+
+  // 7. 渲染图片 ![alt](url)
+  html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" style="max-width:100%; border-radius:6px; margin:8px 0;">');
+
+  // 8. 渲染链接 [text](url)
+  html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="#" onclick="window.api.openItem(\'$2\'); return false;" style="color:var(--primary); text-decoration:underline;">$1</a>');
+
+  // 9. 渲染表格 (Tables)
+  const lines = html.split('\n');
+  let inTable = false;
+  let tableHTML = '';
   
-  // 渲染引用块
-  html = html.replace(/^\>\s+(.*$)/gim, '<blockquote>$1</blockquote>');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    if (line.startsWith('|') && line.endsWith('|')) {
+      const cells = line.split('|').map(c => c.trim()).filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+      
+      // 判断是否是分隔行: | --- | --- |
+      const isSeparator = cells.every(c => /^:-*|-*:-*|-*:$/.test(c));
+      if (isSeparator) {
+        lines[i] = '';
+        continue;
+      }
+      
+      if (!inTable) {
+        inTable = true;
+        tableHTML = '<table><thead><tr>' + cells.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+      } else {
+        tableHTML += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+      }
+      lines[i] = '';
+    } else {
+      if (inTable) {
+        inTable = false;
+        tableHTML += '</tbody></table>';
+        lines[i] = tableHTML + '\n' + lines[i];
+      }
+    }
+  }
+  if (inTable) {
+    tableHTML += '</tbody></table>';
+    lines.push(tableHTML);
+  }
   
-  // 渲染无序列表与有序列表
+  html = lines.join('\n');
+
+  // 10. 渲染任务列表与常规列表
+  // 任务列表: - [ ] 或 - [x]
+  html = html.replace(/^\s*-\s+\[ \] (.*$)/gim, '<ul><li><input type="checkbox" disabled style="margin-right:8px; vertical-align: middle;">$1</li></ul>');
+  html = html.replace(/^\s*-\s+\[[xX]\] (.*$)/gim, '<ul><li><input type="checkbox" checked disabled style="margin-right:8px; vertical-align: middle;">$1</li></ul>');
+  
+  // 无序列表
   html = html.replace(/^\s*-\s+(.*$)/gim, '<ul><li>$1</li></ul>');
   html = html.replace(/^\s*\*\s+(.*$)/gim, '<ul><li>$1</li></ul>');
-  html = html.replace(/^\s*\d+\.\s+(.*$)/gim, '<ol><li>$1</li></ol>');
   
-  // 修复连结列表的 ul/ol 闭合标签
+  // 有序列表
+  html = html.replace(/^\s*\d+\.\s+(.*$)/gim, '<ol><li>$1</li></ol>');
+
+  // 合并连续的列表
   html = html.replace(/<\/ul>\s*<ul>/g, '');
   html = html.replace(/<\/ol>\s*<ol>/g, '');
-  
-  // 渲染代码块
-  html = html.replace(/\`\`\`([\s\S]*?)\`\`\`/g, '<pre><code>$1</code></pre>');
-  html = html.replace(/\`(.*?)\`/g, '<code>$1</code>');
-  
-  // 渲染换行段落
-  html = html.replace(/\n$/gim, '<br>');
+
+  // 11. 划分换行段落 (过滤已有的块级 HTML 标签)
   html = html.split('\n').map(line => {
     const trimmed = line.trim();
-    if (!trimmed.startsWith('<') && trimmed) {
-      return `<p>${line}</p>`;
+    if (!trimmed) return '';
+    if (trimmed.startsWith('<') && (
+      trimmed.startsWith('<h') ||
+      trimmed.startsWith('<div') ||
+      trimmed.startsWith('<p') ||
+      trimmed.startsWith('<ul') ||
+      trimmed.startsWith('<ol') ||
+      trimmed.startsWith('<li') ||
+      trimmed.startsWith('<table') ||
+      trimmed.startsWith('<thead') ||
+      trimmed.startsWith('<tbody') ||
+      trimmed.startsWith('<tr') ||
+      trimmed.startsWith('<td') ||
+      trimmed.startsWith('<th') ||
+      trimmed.startsWith('<blockquote') ||
+      trimmed.startsWith('<hr') ||
+      trimmed.startsWith('<pre') ||
+      trimmed.startsWith('<!--')
+    )) {
+      return line;
     }
-    return line;
+    return `<p>${line}</p>`;
   }).join('\n');
+
+  // 12. 恢复代码块和行内代码
+  codeBlocks.forEach((code, idx) => {
+    html = html.replace(`<!--CODEBLOCK_${idx}-->`, `<pre><code>${code}</code></pre>`);
+  });
   
+  inlineCodes.forEach((code, idx) => {
+    html = html.replace(`<!--INLINECODE_${idx}-->`, `<code>${code}</code>`);
+  });
+
   return html;
 }
 
