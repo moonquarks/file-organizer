@@ -36,6 +36,8 @@ const btnTextTranslate = document.getElementById('btn-text-translate');
 const divTranslateResult = document.getElementById('div-translate-result');
 const btnCopyTranslate = document.getElementById('btn-copy-translate');
 const btnExportTranslate = document.getElementById('btn-export-translate');
+const btnFullscreenTranslate = document.getElementById('btn-fullscreen-translate');
+const translateResultWrapper = document.getElementById('translate-result-wrapper');
 
 const explorerGrid = document.getElementById('explorer-grid');
 const breadcrumbsContainer = document.getElementById('breadcrumbs-container');
@@ -114,6 +116,8 @@ const noteTitleInput = document.getElementById('note-title-input');
 const btnEditNote = document.getElementById('btn-edit-note');
 const btnSaveNote = document.getElementById('btn-save-note');
 const btnDeleteNote = document.getElementById('btn-delete-note');
+const btnFullscreenNote = document.getElementById('btn-fullscreen-note');
+const noteContentArea = document.querySelector('.note-content-area');
 const notePreviewPane = document.getElementById('note-preview-pane');
 const noteEditArea = document.getElementById('note-edit-area');
 
@@ -135,6 +139,16 @@ function showToast(message, isError = false) {
 }
 
 function switchView(viewName) {
+  // 切换视图时强制退出可能的全屏状态
+  if (noteContentArea) {
+    noteContentArea.classList.remove('fullscreen-active');
+    btnFullscreenNote.innerHTML = '<i class="fa-solid fa-expand"></i> 全屏';
+  }
+  if (translateResultWrapper) {
+    translateResultWrapper.classList.remove('fullscreen-active');
+    btnFullscreenTranslate.innerHTML = '<i class="fa-solid fa-expand"></i> 全屏';
+  }
+
   document.querySelectorAll('.view-panel').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   
@@ -1162,6 +1176,7 @@ window.selectNote = async function(noteName) {
   // 切换按钮状态
   btnEditNote.style.display = 'inline-flex';
   btnDeleteNote.style.display = 'inline-flex';
+  btnFullscreenNote.style.display = 'inline-flex';
   btnSaveNote.style.display = 'none';
   
   // 切换面板展示
@@ -1287,6 +1302,7 @@ btnDeleteNote.addEventListener('click', async () => {
       btnEditNote.style.display = 'none';
       btnSaveNote.style.display = 'none';
       btnDeleteNote.style.display = 'none';
+      btnFullscreenNote.style.display = 'none';
       
       await loadNotesList();
     } else {
@@ -1323,6 +1339,7 @@ btnNewNote.addEventListener('click', () => {
   btnEditNote.style.display = 'none';
   btnSaveNote.style.display = 'inline-flex';
   btnDeleteNote.style.display = 'inline-flex';
+  btnFullscreenNote.style.display = 'inline-flex';
   
   noteEditArea.focus();
 });
@@ -2162,4 +2179,23 @@ btnSaveDeviceSettings.addEventListener('click', () => {
   }
   
   showToast('音频及同传配置保存成功！');
+});
+
+// --- 全屏阅读/编辑切换监听 ---
+btnFullscreenNote.addEventListener('click', () => {
+  const isFullscreen = noteContentArea.classList.toggle('fullscreen-active');
+  if (isFullscreen) {
+    btnFullscreenNote.innerHTML = '<i class="fa-solid fa-compress"></i> 退出全屏';
+  } else {
+    btnFullscreenNote.innerHTML = '<i class="fa-solid fa-expand"></i> 全屏';
+  }
+});
+
+btnFullscreenTranslate.addEventListener('click', () => {
+  const isFullscreen = translateResultWrapper.classList.toggle('fullscreen-active');
+  if (isFullscreen) {
+    btnFullscreenTranslate.innerHTML = '<i class="fa-solid fa-compress"></i> 退出全屏';
+  } else {
+    btnFullscreenTranslate.innerHTML = '<i class="fa-solid fa-expand"></i> 全屏';
+  }
 });
