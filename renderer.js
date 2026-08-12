@@ -98,6 +98,11 @@ const inputApiModel = document.getElementById('input-api-model');
 const btnSaveApiSettings = document.getElementById('btn-save-api-settings');
 const apiSettingsError = document.getElementById('api-settings-error');
 
+// 音频硬件设备选择 DOM 声明
+const selectAudioInput = document.getElementById('select-audio-input');
+const selectAudioOutput = document.getElementById('select-audio-output');
+const btnSaveDeviceSettings = document.getElementById('btn-save-device-settings');
+
 // Notes Elements
 const notesView = document.getElementById('notes-view');
 const navNotesBtn = document.getElementById('nav-notes-btn');
@@ -142,6 +147,7 @@ function switchView(viewName) {
     if (viewName === 'settings') {
       settingsView.classList.add('active');
       navSettingsBtn.classList.add('active');
+      populateMediaDevices(); // 进入设置界面时自动刷新输入输出音频设备列表
     } else if (viewName === 'audio') {
       audioView.classList.add('active');
       navAudioBtn.classList.add('active');
@@ -813,6 +819,14 @@ window.playTrack = function(index) {
   const fileUrl = `app-file:///${track.fullPath.replace(/\\/g, '/')}`;
   htmlAudioPlayer.src = fileUrl;
   
+  // 应用保存的输出扬声器设备ID
+  const savedSpeakerId = localStorage.getItem('selectedSpeakerId') || '';
+  if (savedSpeakerId && typeof htmlAudioPlayer.setSinkId === 'function') {
+    htmlAudioPlayer.setSinkId(savedSpeakerId).catch(err => {
+      console.warn('设置扬声器设备失败:', err);
+    });
+  }
+  
   htmlAudioPlayer.play().catch(err => {
     showToast('播放音频失败: ' + err.message, true);
   });
@@ -1477,7 +1491,14 @@ let microphoneSource = null;
 
 async function startRecording() {
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    try {
+      const savedMicId = localStorage.getItem('selectedMicrophoneId');
+      const constraints = savedMicId ? { audio: { deviceId: { exact: savedMicId } } } : { audio: true };
+      mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (e) {
+      console.warn('使用选定麦克风失败，降级使用默认麦克风:', e);
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    }
     
     isRecording = true;
     recordStartTime = Date.now();
@@ -1995,4 +2016,55 @@ document.getElementById('titlebar-maximize-btn').addEventListener('click', () =>
 });
 document.getElementById('titlebar-close-btn').addEventListener('click', () => {
   window.api.closeWindow();
+});
+
+// 获取并填充麦克风和扬声器硬件设备列表
+async function populateMediaDevices() {
+  try {
+    // 首次载入请求一次简单授权以允许获取真实设备标签 Label
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    
+    // 初始化清空下拉菜单并恢复默认选项
+    selectAudioInput.innerHTML = '<option value="">默认系统麦克风</option>';
+    selectAudioOutput.innerHTML = '<option value="">默认系统扬声器</option>';
+    
+    const savedMic = localStorage.getItem('selectedMicrophoneId') || '';
+    const savedSpeaker = localStorage.getItem('selectedSpeakerId') || '';
+    
+    devices.forEach(device => {
+      if (device.kind === 'audioinput') {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label || `麦克风 (${device.deviceId.slice(0, 5)}...)`;
+        if (device.deviceId === savedMic) option.selected = true;
+        selectAudioInput.appendChild(option);
+      } else if (device.kind === 'audiooutput') {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label || `扬声器 (${device.deviceId.slice(0, 5)}...)`;
+        if (device.deviceId === savedSpeaker) option.selected = true;
+        selectAudioOutput.appendChild(option);
+      }
+    });
+  } catch (err) {
+    console.error('获取媒体设备硬件列表失败:', err);
+  }
+}
+
+// 绑定保存音频设备配置事件
+btnSaveDeviceSettings.addEventListener('click', () => {
+  const micId = selectAudioInput.value;
+  const speakerId = selectAudioOutput.value;
+  localStorage.setItem('selectedMicrophoneId', micId);
+  localStorage.setItem('selectedSpeakerId', speakerId);
+  
+  // 立即将所选的扬声器应用到主音频播放器上！
+  if (typeof htmlAudioPlayer.setSinkId === 'function') {
+    htmlAudioPlayer.setSinkId(speakerId).catch(err => {
+      console.warn('切换音频输出设备失败:', err);
+    });
+  }
+  
+  showToast('音频输入输出设备配置保存成功！');
 });
