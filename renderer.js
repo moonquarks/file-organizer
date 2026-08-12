@@ -408,6 +408,7 @@ window.openItem = async (fullPath) => {
       document.getElementById('md-reader-title').textContent = fileName;
       document.getElementById('md-reader-content').innerHTML = renderMarkdown(res.content) || '<p style="color:var(--text-muted); font-style:italic;">该 Markdown 文件无内容</p>';
       openModal('md-reader-modal');
+      triggerMermaidRender(); // 触发流程图渲染
     } else {
       showToast('读取 Markdown 失败: ' + res.error, true);
     }
@@ -873,6 +874,13 @@ playerProgress.addEventListener('input', (e) => {
 // --- 初始化启动 ---
 document.addEventListener('DOMContentLoaded', () => {
   loadConfigAndScan();
+  if (window.mermaid) {
+    window.mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+      securityLevel: 'loose'
+    });
+  }
 });
 
 
@@ -1016,7 +1024,19 @@ function renderMarkdown(md) {
 
   // 12. 恢复代码块和行内代码
   codeBlocks.forEach((code, idx) => {
-    html = html.replace(`<!--CODEBLOCK_${idx}-->`, `<pre><code>${code}</code></pre>`);
+    const trimmedCode = code.trim();
+    if (trimmedCode.startsWith('mermaid\n') || trimmedCode.startsWith('mermaid\r\n') || trimmedCode.startsWith('mermaid')) {
+      const lines = trimmedCode.split('\n');
+      if (lines[0].trim() === 'mermaid') {
+        lines.shift();
+      } else if (lines[0].trim().startsWith('mermaid')) {
+        lines[0] = lines[0].substring(7);
+      }
+      const mermaidContent = lines.join('\n');
+      html = html.replace(`<!--CODEBLOCK_${idx}-->`, `<div class="mermaid" style="background: rgba(0,0,0,0.1); border-radius: 8px; padding: 12px; margin: 12px 0; display: flex; justify-content: center; width: 100%; box-sizing: border-box; overflow-x: auto;">${mermaidContent}</div>`);
+    } else {
+      html = html.replace(`<!--CODEBLOCK_${idx}-->`, `<pre><code>${code}</code></pre>`);
+    }
   });
   
   inlineCodes.forEach((code, idx) => {
@@ -1092,6 +1112,7 @@ window.selectNote = async function(noteName) {
     if (res.success) {
       noteEditArea.value = res.content;
       notePreviewPane.innerHTML = renderMarkdown(res.content) || `<p style="color: var(--text-muted); font-style: italic;">便签内容为空</p>`;
+      triggerMermaidRender(); // 触发流程图渲染
     } else {
       showToast('读取便签失败: ' + res.error, true);
     }
@@ -1152,6 +1173,7 @@ btnSaveNote.addEventListener('click', async () => {
       notePreviewPane.innerHTML = renderMarkdown(content) || `<p style="color: var(--text-muted); font-style: italic;">便签内容为空</p>`;
       notePreviewPane.style.display = 'block';
       noteEditArea.style.display = 'none';
+      triggerMermaidRender(); // 触发流程图渲染
       
       btnEditNote.style.display = 'inline-flex';
       btnSaveNote.style.display = 'none';
@@ -1317,3 +1339,20 @@ btnBatchDelete.addEventListener('click', async () => {
     btnBatchDelete.disabled = false;
   }
 });
+
+// 异步渲染 Mermaid 图表函数
+function triggerMermaidRender() {
+  if (window.mermaid) {
+    setTimeout(() => {
+      try {
+        window.mermaid.run();
+      } catch (e) {
+        try {
+          window.mermaid.init();
+        } catch (err) {
+          console.warn('Mermaid 渲染失败:', err);
+        }
+      }
+    }, 100);
+  }
+}
