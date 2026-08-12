@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -68,6 +68,18 @@ function createWindow () {
 
 app.whenReady().then(() => {
   initConfig(); // 载入持久化配置
+  
+  // 注册安全协议拦截器，将 app-file:// 协议转存并流式传回给 HTML5 audio
+  protocol.handle('app-file', (request) => {
+    const url = new URL(request.url);
+    const decodedPath = decodeURIComponent(url.pathname);
+    let localPath = decodedPath;
+    if (process.platform === 'win32' && localPath.startsWith('/')) {
+      localPath = localPath.substring(1);
+    }
+    return net.fetch('file:///' + localPath);
+  });
+
   createWindow();
 
   app.on('activate', () => {

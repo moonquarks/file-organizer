@@ -804,8 +804,8 @@ window.playTrack = function(index) {
     `;
   }
   
-  const fileUrl = `file:///${track.fullPath.replace(/\\/g, '/')}`;
-  htmlAudioPlayer.src = encodeURI(fileUrl);
+  const fileUrl = `app-file:///${track.fullPath.replace(/\\/g, '/')}`;
+  htmlAudioPlayer.src = fileUrl;
   
   htmlAudioPlayer.play().catch(err => {
     showToast('播放音频失败: ' + err.message, true);
