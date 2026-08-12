@@ -14,7 +14,13 @@ A modern, high-aesthetics desktop File Explorer/Manager replacement built with E
 *   **Quick Navigation Sidebar (侧边栏导航)**: Instant access to root directories and home paths. (侧边栏实时抓取根目录文件夹，提供一键直达快速通道)
 *   **Visual File Icons (彩色文件类型图标)**: Automatically color-maps popular document extensions (.docx, .pptx, .xlsx, .pdf, .md, archives, images, media, etc.) for high scannability. (为 Word、Excel、PPT、PDF、Markdown、压缩包等常见后缀自动匹配精致的品牌色图标)
 *   **Workspace Customization (扫描路径自定义)**: Scan any local folder by updating the workspace settings. (支持在设置中输入任意本地绝对路径进行扫描与接管)
-*   **Settings Persistence (配置持久化)**: Automatically saves your configured root path in persistent user data storage. (关机或重启后，自动记住你上次设置的工作区路径，无需重复输入)
+*   **Settings Persistence (配置持久化)**: Automatically saves your configured root path and API credentials in persistent user data storage. (关机或重启后，自动记住你上次设置的工作区路径及 API 配置，无需重复输入)
+*   **Premium Audio Player (备赛音频播放器)**: Multi-format player supporting `.mp3`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.flac` with playlist scanner. (内置支持主流格式的音频播放器，支持备赛音频文件扫描与无缝播放)
+*   **Speech-to-Text Transcription (语音转文字卡片)**: Transcribe English and Chinese speech recordings on the fly with local cache support. (集成中英文语音转文字组件，边听边看，转换文本自动本地缓存)
+*   **LLM API Settings (AI 大模型设置)**: Seamlessly input customized API keys, base URLs, and model IDs (e.g. Gemini 3.5 Flash) directly in the UI. (支持配置任意 OpenAI 格式兼容的 API 密钥、接口地址及模型名称，如最新的 gemini-3.5-flash)
+*   **Workspace Quick Notes (快捷便签)**: Automatic `/Notes` workspace folder creator, visual split-screen Markdown editor, and live renderer. (在工作区自动维护 `Notes/` 文件夹，内置支持简易 Markdown 实时解析与双向预览)
+*   **In-app Markdown Reader (Markdown 阅读器)**: Double-clicking any standalone `.md` file inside the explorer opens an interactive viewer modal without polluting the notes workspace directory. (双击工作区内任意 `.md` 文件即可直接在应用内阅读渲染结果，不会另存或复制到 Notes 文件夹)
+*   **Multi-Select Batch Actions (项目多选与批量操作)**: Checkbox indicators allow users to batch classify (move) or batch delete selected files/folders in one go. (支持点击项目左上角进行多选，悬浮批量操作栏支持一键批量分类或批量删除)
 
 ---
 
@@ -60,3 +66,4 @@ npm run dist
 ## 📄 License (开源协议)
 
 This project is licensed under the ISC License. (本项目使用 ISC 协议开源)
+

@@ -492,4 +492,60 @@ ipcMain.handle('delete-note', async (event, noteName) => {
   }
 });
 
+// IPC Handler: 读取通用 Markdown 文件内容 (不复制到 Notes 文件夹)
+ipcMain.handle('read-markdown-file', async (event, fullPath) => {
+  try {
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: '目标 Markdown 文件不存在' };
+    }
+    const content = fs.readFileSync(fullPath, 'utf8');
+    return { success: true, content };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler: 批量移动分类项目
+ipcMain.handle('batch-move', async (event, sourceFullPaths, destFolderFullPath) => {
+  try {
+    if (!fs.existsSync(destFolderFullPath)) {
+      return { success: false, error: '目标目录不存在' };
+    }
+    for (const src of sourceFullPaths) {
+      if (!fs.existsSync(src)) continue;
+      const name = path.basename(src);
+      let target = path.join(destFolderFullPath, name);
+      
+      let count = 1;
+      while (fs.existsSync(target)) {
+        const parsed = path.parse(name);
+        target = path.join(destFolderFullPath, `${parsed.name} (${count})${parsed.ext}`);
+        count++;
+      }
+      fs.renameSync(src, target);
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler: 批量删除项目
+ipcMain.handle('batch-delete', async (event, targetFullPaths) => {
+  try {
+    for (const target of targetFullPaths) {
+      if (!fs.existsSync(target)) continue;
+      const stat = fs.statSync(target);
+      if (stat.isDirectory()) {
+        fs.rmSync(target, { recursive: true, force: true });
+      } else {
+        fs.unlinkSync(target);
+      }
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 

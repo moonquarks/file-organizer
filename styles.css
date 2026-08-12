@@ -1284,5 +1284,134 @@ body {
   font-weight: 600;
 }
 
+/* Card Checkboxes */
+.card-item {
+  position: relative;
+}
+
+.card-checkbox {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: rgba(15, 23, 42, 0.6);
+  cursor: pointer;
+  z-index: 10;
+  accent-color: var(--primary);
+  opacity: 0;
+  transition: opacity 0.15s ease-in-out, transform 0.1s ease;
+}
+
+.card-checkbox:hover {
+  transform: scale(1.1);
+}
+
+.card-item:hover .card-checkbox, 
+.card-checkbox:checked {
+  opacity: 1;
+}
+
+/* Floating Batch Action Bar */
+.floating-batch-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(120px);
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.5);
+  backdrop-filter: blur(10px);
+  padding: 12px 24px;
+  border-radius: 30px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  z-index: 150;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.floating-batch-bar.active {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.batch-bar-info {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+#batch-select-count {
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.batch-bar-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.batch-btn {
+  border: none;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+}
+
+.batch-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.batch-btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.batch-btn.primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.batch-btn.danger {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.batch-btn.danger:hover {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+.batch-btn.secondary {
+  background: transparent;
+  border-color: var(--border-color);
+  color: var(--text-muted);
+}
+
+.batch-btn.secondary:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+
 
 

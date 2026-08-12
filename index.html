@@ -306,6 +306,32 @@
     </div>
   </div>
 
+  <!-- Modal: Markdown Reader -->
+  <div class="modal-overlay" id="md-reader-modal">
+    <div class="modal-card" style="max-width: 800px; width: 90%; max-height: 85vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <h3><i class="fa-brands fa-markdown" style="color: var(--primary);"></i> <span id="md-reader-title">Markdown 阅读器</span></h3>
+        <button class="close-modal-btn" onclick="closeModal('md-reader-modal')">&times;</button>
+      </div>
+      <div class="modal-body markdown-body" id="md-reader-content" style="flex: 1; overflow-y: auto; padding: 24px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.95rem; line-height: 1.6;">
+        <!-- Rendered Markdown HTML goes here -->
+      </div>
+      <div class="modal-footer" style="padding-top: 16px;">
+        <button class="modal-btn primary" onclick="closeModal('md-reader-modal')" style="width: 100px;">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Batch Action Bar -->
+  <div class="floating-batch-bar" id="batch-action-bar">
+    <div class="batch-bar-info">已选中 <span id="batch-select-count">0</span> 个项目</div>
+    <div class="batch-bar-actions">
+      <button class="batch-btn primary" id="btn-batch-move"><i class="fa-solid fa-arrows-up-down-left-right"></i> 批量分类</button>
+      <button class="batch-btn danger" id="btn-batch-delete"><i class="fa-solid fa-trash"></i> 批量删除</button>
+      <button class="batch-btn secondary" id="btn-batch-clear">取消选择</button>
+    </div>
+  </div>
+
   <!-- Toast Message -->
   <div id="toast" class="toast">操作成功</div>
 

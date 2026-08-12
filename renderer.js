@@ -81,6 +81,13 @@ const btnDeleteNote = document.getElementById('btn-delete-note');
 const notePreviewPane = document.getElementById('note-preview-pane');
 const noteEditArea = document.getElementById('note-edit-area');
 
+// Batch Elements
+const batchActionBar = document.getElementById('batch-action-bar');
+const batchSelectCount = document.getElementById('batch-select-count');
+const btnBatchMove = document.getElementById('btn-batch-move');
+const btnBatchDelete = document.getElementById('btn-batch-delete');
+const btnBatchClear = document.getElementById('btn-batch-clear');
+
 // --- 通用/视图切换功能 ---
 function showToast(message, isError = false) {
   toast.textContent = message;
@@ -227,6 +234,8 @@ navSettingsBtn.addEventListener('click', () => {
 
 async function navigateTo(subPath) {
   currentSubPath = subPath;
+  selectedPaths = []; // 每次切换目录清空选择状态
+  updateBatchBarUI();
   await loadSidebarQuickLinks();
   
   try {
@@ -290,7 +299,7 @@ function getFileIconClass(fileName) {
   if (['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext)) return 'fa-file-image file-image';
   if (ext === 'txt') return 'fa-file-lines file-txt';
   if (ext === 'md') return 'fa-brands fa-markdown file-md';
-  if (['mp3', 'wav', 'flac'].includes(ext)) return 'fa-file-audio file-audio';
+  if (['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'].includes(ext)) return 'fa-file-audio file-audio';
   if (['mp4', 'mkv', 'avi'].includes(ext)) return 'fa-file-video file-video';
   return 'fa-file file-txt';
 }
@@ -324,8 +333,10 @@ function renderExplorerGrid() {
   
   // 1. 渲染文件夹
   filteredFolders.forEach(folder => {
+    const isChecked = selectedPaths.includes(folder.fullPath);
     html += `
       <div class="card-item" ondblclick="navigateTo('${folder.path.replace(/\\/g, '\\\\')}')">
+        <input type="checkbox" class="card-checkbox" ${isChecked ? 'checked' : ''} onclick="toggleSelectItem(event, '${folder.fullPath.replace(/\\/g, '\\\\')}')">
         <i class="fa-solid fa-folder card-icon folder"></i>
         <div class="card-name text-ellipsis" title="${folder.name}">${folder.name}</div>
         <div class="card-meta">文件夹</div>
@@ -348,9 +359,11 @@ function renderExplorerGrid() {
   filteredFiles.forEach(file => {
     const iconClass = getFileIconClass(file.name);
     const ext = file.name.split('.').pop().toLowerCase();
-    const isAudio = ['mp3', 'ogg', 'wav'].includes(ext);
+    const isAudio = ['mp3', 'ogg', 'wav', 'm4a', 'aac', 'flac'].includes(ext);
+    const isChecked = selectedPaths.includes(file.fullPath);
     html += `
-      <div class="card-item">
+      <div class="card-item" ondblclick="openItem('${file.fullPath.replace(/\\/g, '\\\\')}')">
+        <input type="checkbox" class="card-checkbox" ${isChecked ? 'checked' : ''} onclick="toggleSelectItem(event, '${file.fullPath.replace(/\\/g, '\\\\')}')">
         <i class="fa-regular ${iconClass} card-icon file"></i>
         <div class="card-name text-ellipsis" title="${file.name}">${file.name}</div>
         <div class="card-meta">${formatSize(file.size)} | ${file.mtime.split(' ')[0]}</div>
@@ -384,9 +397,23 @@ function renderExplorerGrid() {
 searchInput.addEventListener('input', renderExplorerGrid);
 
 window.openItem = async (fullPath) => {
-  const res = await window.api.openItem(fullPath);
-  if (!res.success) {
-    showToast('打开失败: ' + res.error, true);
+  const ext = fullPath.split('.').pop().toLowerCase();
+  if (ext === 'md') {
+    // 在应用内以弹窗打开 Markdown 阅读器，且不写入 Notes 目录
+    const res = await window.api.readMarkdownFile(fullPath);
+    if (res.success) {
+      const fileName = fullPath.split(/[\\/]/).pop();
+      document.getElementById('md-reader-title').textContent = fileName;
+      document.getElementById('md-reader-content').innerHTML = renderMarkdown(res.content) || '<p style="color:var(--text-muted); font-style:italic;">该 Markdown 文件无内容</p>';
+      openModal('md-reader-modal');
+    } else {
+      showToast('读取 Markdown 失败: ' + res.error, true);
+    }
+  } else {
+    const res = await window.api.openItem(fullPath);
+    if (!res.success) {
+      showToast('打开失败: ' + res.error, true);
+    }
   }
 };
 
@@ -501,6 +528,7 @@ let filePendingToMoveFullPath = '';
 window.openMoveModal = async (fileName, fileFullPath) => {
   filePendingToMoveFullPath = fileFullPath;
   moveFileNameDisplay.textContent = `移动文件: ${fileName}`;
+  isBatchMoveOperation = false; // 普通移动模式
   
   try {
     const res = await window.api.getRootFolders();
@@ -525,15 +553,29 @@ window.openMoveModal = async (fileName, fileFullPath) => {
 window.confirmMove = async (destFolderFullPath) => {
   closeModal('move-file-modal');
   try {
-    const res = await window.api.moveItem(filePendingToMoveFullPath, destFolderFullPath);
-    if (res.success) {
-      showToast('文件已成功移动分类！');
-      await navigateTo(currentSubPath);
+    if (isBatchMoveOperation) {
+      const res = await window.api.batchMove(selectedPaths, destFolderFullPath);
+      if (res.success) {
+        showToast('所选文件已批量移动分类！');
+        selectedPaths = [];
+        updateBatchBarUI();
+        await navigateTo(currentSubPath);
+      } else {
+        showToast('批量移动失败: ' + res.error, true);
+      }
     } else {
-      showToast('移动失败: ' + res.error, true);
+      const res = await window.api.moveItem(filePendingToMoveFullPath, destFolderFullPath);
+      if (res.success) {
+        showToast('文件已成功移动分类！');
+        await navigateTo(currentSubPath);
+      } else {
+        showToast('移动失败: ' + res.error, true);
+      }
     }
   } catch (err) {
     showToast('移动异常: ' + err, true);
+  } finally {
+    isBatchMoveOperation = false;
   }
 };
 
@@ -1074,4 +1116,87 @@ btnNewNote.addEventListener('click', () => {
   btnDeleteNote.style.display = 'inline-flex';
   
   noteEditArea.focus();
+});
+
+
+// --- 多选及批量操作逻辑 ---
+let selectedPaths = [];
+let isBatchMoveOperation = false;
+
+window.toggleSelectItem = function(event, path) {
+  event.stopPropagation(); // 阻止冒泡，避免触发双击
+  const idx = selectedPaths.indexOf(path);
+  if (idx === -1) {
+    selectedPaths.push(path);
+  } else {
+    selectedPaths.splice(idx, 1);
+  }
+  updateBatchBarUI();
+};
+
+function updateBatchBarUI() {
+  if (selectedPaths.length > 0) {
+    batchSelectCount.textContent = selectedPaths.length;
+    batchActionBar.classList.add('active');
+  } else {
+    batchActionBar.classList.remove('active');
+  }
+}
+
+// 取消选择按钮
+btnBatchClear.addEventListener('click', () => {
+  selectedPaths = [];
+  updateBatchBarUI();
+  document.querySelectorAll('.card-checkbox').forEach(cb => cb.checked = false);
+});
+
+// 批量分类移动
+btnBatchMove.addEventListener('click', async () => {
+  if (selectedPaths.length === 0) return;
+  isBatchMoveOperation = true;
+  moveFileNameDisplay.textContent = `准备批量分类移动选中的 ${selectedPaths.length} 个项目`;
+  
+  try {
+    const res = await window.api.getRootFolders();
+    if (res.success) {
+      if (res.folders.length === 0) {
+        moveFoldersList.innerHTML = `<p style="padding: 12px; color: var(--text-muted); text-align: center;">根目录下还没有文件夹，请先创建一个文件夹！</p>`;
+      } else {
+        moveFoldersList.innerHTML = res.folders.map(folder => `
+          <div class="folder-select-item" onclick="confirmMove('${folder.fullPath.replace(/\\/g, '\\\\')}')">
+            <i class="fa-solid fa-folder"></i>
+            <span>${folder.name}</span>
+          </div>
+        `).join('');
+      }
+      openModal('move-file-modal');
+    }
+  } catch (err) {
+    showToast('获取分类目标列表失败: ' + err, true);
+  }
+});
+
+// 批量删除
+btnBatchDelete.addEventListener('click', async () => {
+  if (selectedPaths.length === 0) return;
+  
+  const confirmDel = confirm(`注意：你确定要彻底删除选中的 ${selectedPaths.length} 个文件/文件夹吗？此操作不可撤销！`);
+  if (!confirmDel) return;
+  
+  btnBatchDelete.disabled = true;
+  try {
+    const res = await window.api.batchDelete(selectedPaths);
+    if (res.success) {
+      showToast('批量删除成功！');
+      selectedPaths = [];
+      updateBatchBarUI();
+      await navigateTo(currentSubPath);
+    } else {
+      showToast('批量删除失败: ' + res.error, true);
+    }
+  } catch (err) {
+    showToast('删除发生异常: ' + err, true);
+  } finally {
+    btnBatchDelete.disabled = false;
+  }
 });

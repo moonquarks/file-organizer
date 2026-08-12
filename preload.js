@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('api', {
   readNote: (noteName) => ipcRenderer.invoke('read-note', noteName),
   saveNote: (noteName, content) => ipcRenderer.invoke('save-note', noteName, content),
   deleteNote: (noteName) => ipcRenderer.invoke('delete-note', noteName),
+  readMarkdownFile: (fullPath) => ipcRenderer.invoke('read-markdown-file', fullPath),
+  batchMove: (sourceFullPaths, destFolderFullPath) => ipcRenderer.invoke('batch-move', sourceFullPaths, destFolderFullPath),
+  batchDelete: (targetFullPaths) => ipcRenderer.invoke('batch-delete', targetFullPaths),
   deleteItem: (targetFullPath) => ipcRenderer.invoke('delete-item', targetFullPath),
   openItem: (targetFullPath) => ipcRenderer.invoke('open-item', targetFullPath)
 });
