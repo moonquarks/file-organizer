@@ -89,7 +89,7 @@ function createWindow () {
     }
   });
   ipcMain.on('window-close', () => {
-    win.close();
+    app.exit(0); // 强行杀死主进程和所有渲染进程，绝不留存后台残留
   });
   
   win.once('ready-to-show', () => {
@@ -142,9 +142,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  app.exit(0); // 所有窗口关闭时，彻底强制杀死主应用进程
 });
 
 // IPC Handler: 获取配置
