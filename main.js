@@ -53,6 +53,14 @@ function createWindow () {
 
   win.loadFile('index.html');
   
+  // 自动通过麦克风等媒体权限申请，防止沙箱拦截
+  win.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media') {
+      return callback(true);
+    }
+    callback(false);
+  });
+  
   win.once('ready-to-show', () => {
     win.show();
   });

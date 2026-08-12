@@ -1460,6 +1460,12 @@ function updateRecordTimer() {
   recordTimer.textContent = `${m}:${s}`;
 }
 
+// WAV 编码缓存与节点变量
+let wavAudioChunks = [];
+let audioContext = null;
+let scriptProcessorNode = null;
+let microphoneSource = null;
+
 async function startRecording() {
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1480,30 +1486,28 @@ async function startRecording() {
     // 启动示波器
     setupVisualizer(mediaStream);
     
-    // 主录音器开始
-    mainRecordedChunks = [];
-    mainAudioRecorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm' });
-    mainAudioRecorder.ondataavailable = e => {
-      if (e.data && e.data.size > 0) {
-        mainRecordedChunks.push(e.data);
-      }
-    };
-    mainAudioRecorder.onstop = async () => {
-      const blob = new Blob(mainRecordedChunks, { type: 'audio/webm' });
-      const arrayBuffer = await blob.arrayBuffer();
-      const now = new Date();
-      const filename = `Record_${formatDateForFile(now)}.webm`;
-      const res = await window.api.saveRecordFile(filename, new Uint8Array(arrayBuffer));
-      if (res.success) {
-        showToast('录音已自动保存！');
-        loadRecordingsList();
-      } else {
-        showToast('保存录音失败: ' + res.error, true);
-      }
-    };
-    mainAudioRecorder.start();
+    // 主录音器：PCM 原始流采集
+    wavAudioChunks = [];
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    microphoneSource = audioContext.createMediaStreamSource(mediaStream);
+    // 建立 4096 字节缓冲区，双输入、双输出声道
+    scriptProcessorNode = audioContext.createScriptProcessor(4096, 2, 2);
     
-    // 同声传译分片开启
+    scriptProcessorNode.onaudioprocess = (e) => {
+      if (!isRecording) return;
+      const left = e.inputBuffer.getChannelData(0);
+      const right = e.inputBuffer.getChannelData(1);
+      // 深拷贝音频分片，避免对象回收导致的音频片段丢失
+      wavAudioChunks.push({
+        left: new Float32Array(left),
+        right: new Float32Array(right)
+      });
+    };
+    
+    microphoneSource.connect(scriptProcessorNode);
+    scriptProcessorNode.connect(audioContext.destination);
+    
+    // 同声传译分片开启 (保持使用 WebM 格式传递给 AI，因为 Gemini API 支持 webm 且切片较小)
     if (checkboxEnableInterpret.checked) {
       interpretationHistory = [];
       interpretLogContainer.innerHTML = '';
@@ -1526,7 +1530,7 @@ async function startRecording() {
   }
 }
 
-function stopRecording() {
+async function stopRecording() {
   if (!isRecording) return;
   
   isRecording = false;
@@ -1540,16 +1544,51 @@ function stopRecording() {
   btnRecordStop.style.background = '#475569';
   recordStatusText.textContent = '录音已停止，文件正在保存...';
   
-  if (mainAudioRecorder && mainAudioRecorder.state === 'recording') {
-    mainAudioRecorder.stop();
+  // 断开 Web Audio 节点与监听
+  if (scriptProcessorNode) {
+    scriptProcessorNode.disconnect();
+    scriptProcessorNode.onaudioprocess = null;
+    scriptProcessorNode = null;
+  }
+  if (microphoneSource) {
+    microphoneSource.disconnect();
+    microphoneSource = null;
   }
   
+  // 终止分片同传
   if (sliceAudioRecorder && sliceAudioRecorder.state === 'recording') {
     sliceAudioRecorder.stop();
   }
   
+  // 释放麦克风硬件资源
   if (mediaStream) {
     mediaStream.getTracks().forEach(track => track.stop());
+  }
+
+  // 异步将合并后的 PCM 数据编码为标准立体声 WAV
+  if (wavAudioChunks.length > 0) {
+    try {
+      const sampleRate = audioContext ? audioContext.sampleRate : 44100;
+      const wavBlob = exportWAV(wavAudioChunks, sampleRate);
+      const arrayBuffer = await wavBlob.arrayBuffer();
+      const now = new Date();
+      const filename = `Record_${formatDateForFile(now)}.wav`;
+      
+      const res = await window.api.saveRecordFile(filename, new Uint8Array(arrayBuffer));
+      if (res.success) {
+        showToast('录音已保存为高保真 WAV 格式！');
+        loadRecordingsList();
+      } else {
+        showToast('保存录音失败: ' + res.error, true);
+      }
+    } catch (e) {
+      showToast('WAV 编码失败: ' + e.message, true);
+    }
+  }
+
+  if (audioContext && audioContext.state !== 'closed') {
+    audioContext.close();
+    audioContext = null;
   }
 }
 
@@ -1868,3 +1907,69 @@ btnExportTranslate.addEventListener('click', async () => {
     showToast('导出异常: ' + err, true);
   }
 });
+
+// WAV 编码辅助工具函数
+function exportWAV(buffers, sampleRate) {
+  let leftLen = 0;
+  buffers.forEach(b => leftLen += b.left.length);
+  
+  const leftChannel = new Float32Array(leftLen);
+  const rightChannel = new Float32Array(leftLen);
+  
+  let offset = 0;
+  buffers.forEach(b => {
+    leftChannel.set(b.left, offset);
+    rightChannel.set(b.right, offset);
+    offset += b.left.length;
+  });
+  
+  const buffer = new ArrayBuffer(44 + leftLen * 2 * 2);
+  const view = new DataView(buffer);
+  
+  /* RIFF identifier */
+  writeString(view, 0, 'RIFF');
+  /* file length */
+  view.setUint32(4, 36 + leftLen * 2 * 2, true);
+  /* RIFF type */
+  writeString(view, 8, 'WAVE');
+  /* format chunk identifier */
+  writeString(view, 12, 'fmt ');
+  /* format chunk length */
+  view.setUint32(16, 16, true);
+  /* sample format (raw PCM = 1) */
+  view.setUint16(20, 1, true);
+  /* channel count (2 = stereo) */
+  view.setUint16(22, 2, true);
+  /* sample rate */
+  view.setUint32(24, sampleRate, true);
+  /* byte rate (sample rate * block align) */
+  view.setUint32(28, sampleRate * 4, true);
+  /* block align (channel count * bytes per sample) */
+  view.setUint16(32, 4, true);
+  /* bits per sample (16 bits) */
+  view.setUint16(34, 16, true);
+  /* data chunk identifier */
+  writeString(view, 36, 'data');
+  /* data chunk length */
+  view.setUint32(40, leftLen * 2 * 2, true);
+  
+  // 写入交织双声道 PCM 采样点
+  let index = 44;
+  for (let i = 0; i < leftLen; i++) {
+    // 左声道
+    let s = Math.max(-1, Math.min(1, leftChannel[i]));
+    view.setInt16(index, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    // 右声道
+    s = Math.max(-1, Math.min(1, rightChannel[i]));
+    view.setInt16(index + 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    index += 4;
+  }
+  
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+}
