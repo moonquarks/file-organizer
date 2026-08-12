@@ -1612,31 +1612,36 @@ async function stopRecording() {
     mediaStream.getTracks().forEach(track => track.stop());
   }
 
-  // 异步将合并后的 PCM 数据编码为标准立体声 WAV
-  if (wavAudioChunks.length > 0) {
-    try {
-      const sampleRate = audioContext ? audioContext.sampleRate : 44100;
-      const wavBlob = exportWAV(wavAudioChunks, sampleRate);
-      const arrayBuffer = await wavBlob.arrayBuffer();
-      const now = new Date();
-      const filename = `Record_${formatDateForFile(now)}.mp3`;
-      
-      const res = await window.api.saveRecordFile(filename, new Uint8Array(arrayBuffer));
-      if (res.success) {
-        showToast('录音已保存为 MP3 压缩格式！');
-        loadRecordingsList();
-      } else {
-        showToast('保存录音失败: ' + res.error, true);
+  // 延迟 50ms 执行，给 Electron UI 留出渲染停止录音按钮状态和提示文字的空档，防止界面卡死
+  setTimeout(async () => {
+    if (wavAudioChunks.length > 0) {
+      try {
+        const sampleRate = audioContext ? audioContext.sampleRate : 44100;
+        const wavBlob = exportWAV(wavAudioChunks, sampleRate);
+        const arrayBuffer = await wavBlob.arrayBuffer();
+        const now = new Date();
+        const filename = `Record_${formatDateForFile(now)}.mp3`;
+        
+        const res = await window.api.saveRecordFile(filename, new Uint8Array(arrayBuffer));
+        if (res.success) {
+          showToast('录音已保存为 MP3 压缩格式！');
+          loadRecordingsList();
+        } else {
+          showToast('保存录音失败: ' + res.error, true);
+        }
+      } catch (e) {
+        showToast('WAV 编码失败: ' + e.message, true);
       }
-    } catch (e) {
-      showToast('WAV 编码失败: ' + e.message, true);
     }
-  }
 
-  if (audioContext && audioContext.state !== 'closed') {
-    audioContext.close();
-    audioContext = null;
-  }
+    if (audioContext && audioContext.state !== 'closed') {
+      audioContext.close();
+      audioContext = null;
+    }
+    
+    // 恢复状态提示文字
+    recordStatusText.textContent = '录音设备就绪，点击红色麦克风开始录音';
+  }, 50);
 }
 
 function startInterpretationSlices(stream) {
@@ -1693,11 +1698,24 @@ window.api.onInterpretSliceChunk((data) => {
     const translation = parts[1]?.trim() || '';
     const timeStr = tempElement.dataset.timeStr || '--:--';
     
+    let originalHtml = '';
+    let translationHtml = '';
+    
+    if (parts.length > 1) {
+      // 已经包含分割线，说明正在翻译或已经翻译完成
+      originalHtml = original;
+      translationHtml = translation ? `${translation}<span class="typing-cursor"></span>` : '<i class="fa-solid fa-spinner fa-spin"></i> 正在翻译...';
+    } else {
+      // 尚未检测到分割线，说明仍在录音原文听写中
+      originalHtml = original ? `${original}<span class="typing-cursor"></span>` : '<i class="fa-solid fa-spinner fa-spin"></i> 正在识别原文...';
+      translationHtml = '<i class="fa-solid fa-spinner fa-spin"></i> 正在翻译...';
+    }
+    
     tempElement.innerHTML = `
       <div style="font-size:0.75rem; color:var(--primary); font-weight:bold; margin-bottom:4px;">[${timeStr}]</div>
       <div style="display:flex; flex-direction:column; gap:4px;">
-        <p style="font-size:0.85rem; color:var(--text-main); margin:0;">${original || '<i class="fa-solid fa-spinner fa-spin"></i> 正在识别原文...'}</p>
-        <p style="font-size:0.85rem; color:var(--success); font-weight:500; margin:0;">${translation || '<i class="fa-solid fa-spinner fa-spin"></i> 正在翻译...'}</p>
+        <p style="font-size:0.85rem; color:var(--text-main); margin:0;">${originalHtml}</p>
+        <p style="font-size:0.85rem; color:var(--success); font-weight:500; margin:0;">${translationHtml}</p>
       </div>
     `;
     interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
