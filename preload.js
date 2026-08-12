@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('api', {
   createFolder: (targetPath, folderName) => ipcRenderer.invoke('create-folder', targetPath, folderName),
   moveItem: (sourceFullPath, destFolderFullPath) => ipcRenderer.invoke('move-item', sourceFullPath, destFolderFullPath),
   renameItem: (itemFullPath, newName) => ipcRenderer.invoke('rename-item', itemFullPath, newName),
+  getAllAudios: () => ipcRenderer.invoke('get-all-audios'),
+  saveApiSettings: (settings) => ipcRenderer.invoke('save-api-settings', settings),
+  transcribeAudio: (filePath) => ipcRenderer.invoke('transcribe-audio', filePath),
   deleteItem: (targetFullPath) => ipcRenderer.invoke('delete-item', targetFullPath),
   openItem: (targetFullPath) => ipcRenderer.invoke('open-item', targetFullPath)
 });

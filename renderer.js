@@ -22,6 +22,23 @@ const settingsError = document.getElementById('settings-error');
 // Sidebar quick links
 const sidebarQuickLinks = document.getElementById('sidebar-quick-links');
 
+// Audio Player Elements
+const audioView = document.getElementById('audio-view');
+const navAudioBtn = document.getElementById('nav-audio-btn');
+const playlistContainer = document.getElementById('playlist-container');
+const htmlAudioPlayer = document.getElementById('html-audio-player');
+const playerTrackName = document.getElementById('player-track-name');
+const playerTrackPath = document.getElementById('player-track-path');
+const playerBtnPrev = document.getElementById('player-btn-prev');
+const playerBtnPlay = document.getElementById('player-btn-play');
+const playerBtnNext = document.getElementById('player-btn-next');
+const playerTimeCurrent = document.getElementById('player-time-current');
+const playerTimeDuration = document.getElementById('player-time-duration');
+const playerProgress = document.getElementById('player-progress');
+const playerVolume = document.getElementById('player-volume');
+const playerDisk = document.getElementById('player-disk');
+const volumeIcon = document.getElementById('volume-icon');
+
 // Modals elements
 const newFolderModal = document.getElementById('new-folder-modal');
 const inputFolderName = document.getElementById('input-folder-name');
@@ -39,6 +56,17 @@ const moveFoldersList = document.getElementById('move-folders-list');
 
 // Toast
 const toast = document.getElementById('toast');
+
+// Transcription & API Settings Elements
+const transcribeApiStatus = document.getElementById('transcribe-api-status');
+const transcriptionTextContainer = document.getElementById('transcription-text-container');
+const btnTranscribe = document.getElementById('btn-transcribe');
+
+const selectApiType = document.getElementById('select-api-type');
+const inputApiKey = document.getElementById('input-api-key');
+const inputApiUrl = document.getElementById('input-api-url');
+const btnSaveApiSettings = document.getElementById('btn-save-api-settings');
+const apiSettingsError = document.getElementById('api-settings-error');
 
 // --- 通用/视图切换功能 ---
 function showToast(message, isError = false) {
@@ -59,6 +87,10 @@ function switchView(viewName) {
   } else if (viewName === 'settings') {
     settingsView.classList.add('active');
     navSettingsBtn.classList.add('active');
+  } else if (viewName === 'audio') {
+    audioView.classList.add('active');
+    navAudioBtn.classList.add('active');
+    loadAudioPlaylist();
   }
 }
 
@@ -88,6 +120,12 @@ async function loadConfigAndScan() {
       rootPathDisplay.textContent = currentWorkspaceConfig.rootPath;
       inputRootPath.value = currentWorkspaceConfig.rootPath;
       
+      // 加载 API 接口配置
+      selectApiType.value = currentWorkspaceConfig.apiType || 'gemini';
+      inputApiKey.value = currentWorkspaceConfig.apiKey || '';
+      inputApiUrl.value = currentWorkspaceConfig.apiBaseUrl || '';
+      updateTranscribeApiStatusUI();
+      
       // 加载侧边栏快速通道
       await loadSidebarQuickLinks();
       
@@ -96,6 +134,17 @@ async function loadConfigAndScan() {
     }
   } catch (err) {
     showToast('加载配置失败: ' + err, true);
+  }
+}
+
+function updateTranscribeApiStatusUI() {
+  if (currentWorkspaceConfig.apiKey) {
+    const typeName = currentWorkspaceConfig.apiType === 'gemini' ? 'Gemini' : 'Whisper';
+    transcribeApiStatus.textContent = `API 已配置: ${typeName}`;
+    transcribeApiStatus.classList.add('active');
+  } else {
+    transcribeApiStatus.textContent = '未配置 API';
+    transcribeApiStatus.classList.remove('active');
   }
 }
 
@@ -280,15 +329,23 @@ function renderExplorerGrid() {
   // 2. 渲染文件
   filteredFiles.forEach(file => {
     const iconClass = getFileIconClass(file.name);
+    const ext = file.name.split('.').pop().toLowerCase();
+    const isAudio = ['mp3', 'ogg', 'wav'].includes(ext);
     html += `
       <div class="card-item">
         <i class="fa-regular ${iconClass} card-icon file"></i>
         <div class="card-name text-ellipsis" title="${file.name}">${file.name}</div>
         <div class="card-meta">${formatSize(file.size)} | ${file.mtime.split(' ')[0]}</div>
         <div class="card-actions">
-          <button class="card-btn" onclick="openItem('${file.fullPath.replace(/\\/g, '\\\\')}')" title="打开文件">
-            <i class="fa-solid fa-eye"></i>
-          </button>
+          ${isAudio ? `
+            <button class="card-btn" onclick="playAudioFromFile('${file.name.replace(/'/g, "\\'")}', '${file.fullPath.replace(/\\/g, '\\\\')}')" title="播放音频">
+              <i class="fa-solid fa-play"></i>
+            </button>
+          ` : `
+            <button class="card-btn" onclick="openItem('${file.fullPath.replace(/\\/g, '\\\\')}')" title="打开文件">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+          `}
           <button class="card-btn btn-move" onclick="openMoveModal('${file.name.replace(/'/g, "\\'")}', '${file.fullPath.replace(/\\/g, '\\\\')}')" title="移动文件">
             <i class="fa-solid fa-arrows-up-down-left-right"></i>
           </button>
@@ -462,6 +519,269 @@ window.confirmMove = async (destFolderFullPath) => {
   }
 };
 
+
+// navAudioBtn 点击事件
+navAudioBtn.addEventListener('click', () => {
+  switchView('audio');
+});
+
+// --- 音频播放器逻辑 ---
+let audioPlaylist = [];
+let audioCurrentIndex = -1;
+let transcriptionCache = {}; // 文件绝对路径 -> 转写文本 缓存映射
+
+// 保存 API 配置
+btnSaveApiSettings.addEventListener('click', async () => {
+  const apiType = selectApiType.value;
+  const apiKey = inputApiKey.value.trim();
+  const apiBaseUrl = inputApiUrl.value.trim();
+
+  if (!apiKey) {
+    apiSettingsError.textContent = 'API Key 不能为空';
+    return;
+  }
+
+  btnSaveApiSettings.disabled = true;
+  apiSettingsError.textContent = '';
+  try {
+    const res = await window.api.saveApiSettings({ apiType, apiKey, apiBaseUrl });
+    if (res.success) {
+      showToast('API 接口配置保存成功！');
+      currentWorkspaceConfig = res.config;
+      updateTranscribeApiStatusUI();
+    } else {
+      apiSettingsError.textContent = res.error;
+    }
+  } catch (err) {
+    apiSettingsError.textContent = '保存配置失败: ' + err;
+  } finally {
+    btnSaveApiSettings.disabled = false;
+  }
+});
+
+// 一键语音转文字转录
+btnTranscribe.addEventListener('click', async () => {
+  if (audioPlaylist.length === 0 || audioCurrentIndex === -1) {
+    showToast('请先选择并播放一个音频文件', true);
+    return;
+  }
+
+  const track = audioPlaylist[audioCurrentIndex];
+
+  // 检查是否已有缓存
+  if (transcriptionCache[track.fullPath]) {
+    showToast('已加载缓存转写内容');
+    return;
+  }
+
+  if (!currentWorkspaceConfig.apiKey) {
+    showToast('请先前往“工作区路径”设置中配置 API Key！', true);
+    switchView('settings');
+    return;
+  }
+
+  btnTranscribe.disabled = true;
+  transcriptionTextContainer.innerHTML = `
+    <div class="transcription-empty">
+      <i class="fa-solid fa-spinner fa-spin" style="font-size: 3rem; margin-bottom: 12px; color: var(--primary);"></i>
+      <p>正在提交音频数据到云端进行高精度文本转写...</p>
+      <p style="font-size: 0.8rem; opacity: 0.7; margin-top: 4px;">由于文件可能较大，转录约需要 15 - 45 秒，请稍后</p>
+    </div>
+  `;
+
+  try {
+    const res = await window.api.transcribeAudio(track.fullPath);
+    if (res.success) {
+      showToast('音频转文字成功！');
+      transcriptionCache[track.fullPath] = res.text;
+      transcriptionTextContainer.textContent = res.text;
+    } else {
+      showToast('转写失败: ' + res.error, true);
+      transcriptionTextContainer.innerHTML = `
+        <div class="transcription-empty" style="color: var(--danger);">
+          <i class="fa-solid fa-triangle-exclamation" style="font-size: 3rem; margin-bottom: 12px;"></i>
+          <p>转录失败</p>
+          <p style="font-size: 0.8rem; margin-top: 4px;">${res.error}</p>
+        </div>
+      `;
+    }
+  } catch (err) {
+    showToast('转写发生错误: ' + err, true);
+    transcriptionTextContainer.innerHTML = `
+      <div class="transcription-empty" style="color: var(--danger);">
+        <i class="fa-solid fa-triangle-exclamation" style="font-size: 3rem; margin-bottom: 12px;"></i>
+        <p>转写失败: ${err}</p>
+      </div>
+    `;
+  } finally {
+    btnTranscribe.disabled = false;
+  }
+});
+
+function formatAudioTime(seconds) {
+  if (isNaN(seconds)) return '00:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+async function loadAudioPlaylist() {
+  try {
+    const res = await window.api.getAllAudios();
+    if (res.success) {
+      audioPlaylist = res.audios;
+      renderPlaylistUI();
+    } else {
+      showToast('获取播放列表失败: ' + res.error, true);
+    }
+  } catch (err) {
+    showToast('加载播放列表出错: ' + err, true);
+  }
+}
+
+function renderPlaylistUI() {
+  if (audioPlaylist.length === 0) {
+    playlistContainer.innerHTML = `<p style="padding: 16px; color: var(--text-muted); text-align: center;">工作区目录中未找到任何 mp3 / ogg 音频文件</p>`;
+    return;
+  }
+
+  playlistContainer.innerHTML = audioPlaylist.map((track, index) => {
+    const isActive = index === audioCurrentIndex;
+    return `
+      <div class="playlist-item ${isActive ? 'active' : ''}" onclick="playTrack(${index})">
+        <div class="playlist-item-left">
+          <i class="${isActive ? 'fa-solid fa-volume-high' : 'fa-solid fa-music'}"></i>
+          <span class="playlist-item-title text-ellipsis" title="${track.name}">${track.name}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.playTrack = function(index) {
+  if (index < 0 || index >= audioPlaylist.length) return;
+  
+  audioCurrentIndex = index;
+  const track = audioPlaylist[index];
+  
+  playerTrackName.textContent = track.name;
+  playerTrackPath.textContent = track.relativePath;
+  
+  // 加载转录文本的缓存
+  if (transcriptionCache[track.fullPath]) {
+    transcriptionTextContainer.textContent = transcriptionCache[track.fullPath];
+  } else {
+    transcriptionTextContainer.innerHTML = `
+      <div class="transcription-empty" id="transcription-empty-placeholder">
+        <i class="fa-solid fa-quote-right" style="font-size: 3rem; margin-bottom: 12px; opacity: 0.3;"></i>
+        <p>播放音频时，点击下方按钮开始进行中英文录音转写</p>
+      </div>
+    `;
+  }
+  
+  const fileUrl = `file:///${track.fullPath.replace(/\\/g, '/')}`;
+  htmlAudioPlayer.src = encodeURI(fileUrl);
+  
+  htmlAudioPlayer.play().catch(err => {
+    showToast('播放音频失败: ' + err.message, true);
+  });
+  
+  playerBtnPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
+  playerDisk.classList.add('playing');
+  renderPlaylistUI();
+};
+
+window.playAudioFromFile = async (name, fullPath) => {
+  switchView('audio');
+  
+  const res = await window.api.getAllAudios();
+  if (res.success) {
+    audioPlaylist = res.audios;
+    
+    const idx = audioPlaylist.findIndex(t => t.fullPath === fullPath);
+    if (idx !== -1) {
+      playTrack(idx);
+    } else {
+      const track = {
+        name,
+        fullPath,
+        relativePath: name
+      };
+      audioPlaylist.push(track);
+      renderPlaylistUI();
+      playTrack(audioPlaylist.length - 1);
+    }
+  }
+};
+
+playerBtnPlay.addEventListener('click', () => {
+  if (audioPlaylist.length === 0) return;
+  if (audioCurrentIndex === -1) {
+    playTrack(0);
+    return;
+  }
+  
+  if (htmlAudioPlayer.paused) {
+    htmlAudioPlayer.play();
+    playerBtnPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    playerDisk.classList.add('playing');
+  } else {
+    htmlAudioPlayer.pause();
+    playerBtnPlay.innerHTML = '<i class="fa-solid fa-play"></i>';
+    playerDisk.classList.remove('playing');
+  }
+});
+
+playerBtnNext.addEventListener('click', () => {
+  if (audioPlaylist.length === 0) return;
+  let nextIdx = audioCurrentIndex + 1;
+  if (nextIdx >= audioPlaylist.length) nextIdx = 0;
+  playTrack(nextIdx);
+});
+
+playerBtnPrev.addEventListener('click', () => {
+  if (audioPlaylist.length === 0) return;
+  let prevIdx = audioCurrentIndex - 1;
+  if (prevIdx < 0) prevIdx = audioPlaylist.length - 1;
+  playTrack(prevIdx);
+});
+
+htmlAudioPlayer.addEventListener('ended', () => {
+  playerBtnNext.click();
+});
+
+playerVolume.addEventListener('input', (e) => {
+  const val = e.target.value;
+  htmlAudioPlayer.volume = val / 100;
+  
+  if (val == 0) {
+    volumeIcon.className = 'fa-solid fa-volume-xmark';
+  } else if (val < 40) {
+    volumeIcon.className = 'fa-solid fa-volume-low';
+  } else {
+    volumeIcon.className = 'fa-solid fa-volume-high';
+  }
+});
+
+htmlAudioPlayer.addEventListener('timeupdate', () => {
+  const current = htmlAudioPlayer.currentTime;
+  const duration = htmlAudioPlayer.duration || 0;
+  
+  playerTimeCurrent.textContent = formatAudioTime(current);
+  playerTimeDuration.textContent = formatAudioTime(duration);
+  
+  if (duration > 0) {
+    playerProgress.value = (current / duration) * 100;
+  }
+});
+
+playerProgress.addEventListener('input', (e) => {
+  const val = e.target.value;
+  const duration = htmlAudioPlayer.duration || 0;
+  if (duration > 0) {
+    htmlAudioPlayer.currentTime = (val / 100) * duration;
+  }
+});
 
 // --- 初始化启动 ---
 document.addEventListener('DOMContentLoaded', () => {

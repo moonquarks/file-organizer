@@ -4,7 +4,10 @@ const fs = require('fs');
 
 let CONFIG_FILE = '';
 let currentConfig = {
-  rootPath: path.resolve(__dirname, '..') // 默认上一层目录
+  rootPath: path.resolve(__dirname, '..'), // 默认上一层目录
+  apiType: 'gemini',
+  apiKey: '',
+  apiBaseUrl: ''
 };
 
 function initConfig() {
@@ -13,7 +16,7 @@ function initConfig() {
     CONFIG_FILE = path.join(userDataPath, 'config.json');
     if (fs.existsSync(CONFIG_FILE)) {
       const data = fs.readFileSync(CONFIG_FILE, 'utf8');
-      currentConfig = JSON.parse(data);
+      currentConfig = Object.assign({}, currentConfig, JSON.parse(data));
     } else {
       saveConfig();
     }
@@ -40,7 +43,8 @@ function createWindow () {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      webSecurity: false
     },
     show: false,
     backgroundColor: '#0f172a'
@@ -241,6 +245,39 @@ ipcMain.handle('rename-item', async (event, sourceFullPath, newName) => {
   }
 });
 
+// IPC Handler: 递归扫描工作区内的所有音频文件
+ipcMain.handle('get-all-audios', async () => {
+  const audios = [];
+  
+  function scan(dirPath) {
+    if (!fs.existsSync(dirPath)) return;
+    const items = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const item of items) {
+      if (item.name.startsWith('~$') || item.name === 'node_modules' || item.name === '.git' || item.name === 'Flies CSS' || item.name === 'app') continue;
+      const fullPath = path.join(dirPath, item.name);
+      if (item.isDirectory()) {
+        scan(fullPath);
+      } else {
+        const ext = path.extname(item.name).toLowerCase();
+        if (['.mp3', '.ogg', '.wav'].includes(ext)) {
+          audios.push({
+            name: item.name,
+            fullPath: fullPath,
+            relativePath: path.relative(currentConfig.rootPath, fullPath)
+          });
+        }
+      }
+    }
+  }
+
+  try {
+    scan(currentConfig.rootPath);
+    return { success: true, audios };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // IPC Handler: 删除文件或文件夹
 ipcMain.handle('delete-item', async (event, targetFullPath) => {
   try {
@@ -275,3 +312,98 @@ ipcMain.handle('open-item', async (event, targetFullPath) => {
     return { success: false, error: err.message };
   }
 });
+
+// IPC Handler: 保存 API 配置
+ipcMain.handle('save-api-settings', (event, { apiType, apiKey, apiBaseUrl }) => {
+  currentConfig.apiType = apiType;
+  currentConfig.apiKey = apiKey;
+  currentConfig.apiBaseUrl = apiBaseUrl;
+  saveConfig();
+  return { success: true, config: currentConfig };
+});
+
+// IPC Handler: 语音转文字转录 (使用 Gemini 1.5 Flash 或 OpenAI Whisper)
+ipcMain.handle('transcribe-audio', async (event, filePath) => {
+  try {
+    if (!currentConfig.apiKey) {
+      return { success: false, error: '请先在工作区“设置”中配置您的 API Key。' };
+    }
+    if (!fs.existsSync(filePath)) {
+      return { success: false, error: '音频文件在磁盘上不存在。' };
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    let mimeType = 'audio/mp3';
+    if (ext === '.ogg') mimeType = 'audio/ogg';
+    if (ext === '.wav') mimeType = 'audio/wav';
+
+    if (currentConfig.apiType === 'gemini') {
+      const base64Data = fs.readFileSync(filePath).toString('base64');
+      const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
+      const url = `${baseUrl}/v1beta/models/gemini-1.5-flash:generateContent?key=${currentConfig.apiKey}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: base64Data
+                }
+              },
+              {
+                text: "请对这个音频文件进行精准的中文/英文文本转录。请智能区分发言段落（如果有多人对话），直接输出纯转录文本，不要带任何标题、Markdown标题、总结或废话。"
+              }
+            ]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, error: `Gemini API 错误 (HTTP ${response.status}): ${errorText}` };
+      }
+
+      const json = await response.json();
+      const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        return { success: false, error: 'Gemini API 返回了空内容，请检查音频文件。' };
+      }
+      return { success: true, text };
+
+    } else if (currentConfig.apiType === 'openai-whisper') {
+      const baseUrl = currentConfig.apiBaseUrl || 'https://api.openai.com/v1';
+      const url = `${baseUrl}/audio/transcriptions`;
+
+      const formData = new FormData();
+      const fileBuffer = fs.readFileSync(filePath);
+      const fileBlob = new Blob([fileBuffer], { type: mimeType });
+      formData.append('file', fileBlob, path.basename(filePath));
+      formData.append('model', 'whisper-1');
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${currentConfig.apiKey}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, error: `OpenAI API 错误 (HTTP ${response.status}): ${errorText}` };
+      }
+
+      const json = await response.json();
+      return { success: true, text: json.text };
+    }
+
+    return { success: false, error: '未知的 API 类型配置' };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+

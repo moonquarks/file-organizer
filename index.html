@@ -23,6 +23,13 @@
       </div>
 
       <div class="sidebar-section">
+        <span class="section-title">应用工具</span>
+        <button class="nav-item" id="nav-audio-btn" data-tab="audio-view">
+          <i class="fa-solid fa-music"></i> 音频播放器
+        </button>
+      </div>
+
+      <div class="sidebar-section">
         <span class="section-title">设置</span>
         <button class="nav-item" id="nav-settings-btn">
           <i class="fa-solid fa-sliders"></i> 工作区路径
@@ -84,6 +91,104 @@
             <button class="action-btn primary" id="btn-save-path">保存并刷新</button>
           </div>
           <span class="error-msg" id="settings-error"></span>
+        </div>
+
+        <div class="settings-card" style="margin-top: 24px;">
+          <h3>音频转文字 API 配置</h3>
+          <p class="description">配置 Gemini 1.5 Flash (可用免费额度) 或 OpenAI Whisper API 启用音频转录服务。</p>
+          <div class="settings-form">
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">接口类型</label>
+              <select id="select-api-type" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: var(--text-main); outline: none;">
+                <option value="gemini">Gemini 1.5 Flash (推荐 - 可免费申请 Key)</option>
+                <option value="openai-whisper">OpenAI Whisper API</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">API Key (密钥)</label>
+              <input type="password" id="input-api-key" placeholder="请输入你的 API Key" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
+            </div>
+            <div class="form-group" style="margin-bottom: 16px;">
+              <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">API 代理接口地址 (选填，为空则使用官方默认域名)</label>
+              <input type="text" id="input-api-url" placeholder="例如: https://api.yourproxy.com" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
+            </div>
+            <button class="action-btn primary" id="btn-save-api-settings">保存 API 配置</button>
+          </div>
+          <span class="error-msg" id="api-settings-error"></span>
+        </div>
+      </section>
+
+      <!-- Audio Player View -->
+      <section id="audio-view" class="view-panel">
+        <header>
+          <h1>音频播放器</h1>
+          <p>支持 mp3、ogg 格式的备赛音频播放</p>
+        </header>
+
+        <div class="audio-player-container">
+          <!-- Left Column: Player & Playlist -->
+          <div class="player-left-col">
+            <!-- Play Disk & Info Card -->
+            <div class="audio-card">
+              <div class="audio-visualizer-disk" id="player-disk">
+                <i class="fa-solid fa-compact-disc disc-icon"></i>
+              </div>
+              <div class="audio-track-info">
+                <h3 id="player-track-name" class="text-ellipsis">未选择音频文件</h3>
+                <p id="player-track-path" class="text-ellipsis">请从侧边列表或文件卡片中选择播放</p>
+              </div>
+              
+              <audio id="html-audio-player" style="display:none;"></audio>
+              
+              <div class="player-controls">
+                <div class="progress-bar-container">
+                  <span id="player-time-current">00:00</span>
+                  <input type="range" id="player-progress" value="0" min="0" max="100" class="player-slider">
+                  <span id="player-time-duration">00:00</span>
+                </div>
+                
+                <div class="player-buttons">
+                  <button class="control-btn" id="player-btn-prev" title="上一首"><i class="fa-solid fa-backward-step"></i></button>
+                  <button class="control-btn play-pause-btn" id="player-btn-play" title="播放"><i class="fa-solid fa-play"></i></button>
+                  <button class="control-btn" id="player-btn-next" title="下一首"><i class="fa-solid fa-forward-step"></i></button>
+                </div>
+                
+                <div class="volume-container">
+                  <i class="fa-solid fa-volume-high" id="volume-icon"></i>
+                  <input type="range" id="player-volume" value="80" min="0" max="100" class="volume-slider">
+                </div>
+              </div>
+            </div>
+
+            <!-- Playlist Card -->
+            <div class="playlist-card">
+              <h3>备赛音频列表</h3>
+              <div class="playlist-items" id="playlist-container">
+                <!-- Rendered via JS -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Speech Transcription -->
+          <div class="player-right-col">
+            <div class="transcription-card">
+              <div class="transcription-header">
+                <h3><i class="fa-solid fa-file-waveform"></i> 语音转文字 (边听边看)</h3>
+                <span class="api-status-badge" id="transcribe-api-status">未配置 API</span>
+              </div>
+              <div class="transcription-body" id="transcription-text-container">
+                <div class="transcription-empty" id="transcription-empty-placeholder">
+                  <i class="fa-solid fa-quote-right" style="font-size: 3rem; margin-bottom: 12px; opacity: 0.3;"></i>
+                  <p>播放音频时，点击下方按钮开始进行中英文录音转写</p>
+                </div>
+              </div>
+              <div class="transcription-footer">
+                <button class="action-btn success" id="btn-transcribe" style="width: 100%; justify-content: center; padding: 12px 18px;">
+                  <i class="fa-solid fa-wand-magic-sparkles"></i> 一键转录当前音频
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
