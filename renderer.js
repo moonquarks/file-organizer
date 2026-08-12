@@ -65,6 +65,7 @@ const btnTranscribe = document.getElementById('btn-transcribe');
 const selectApiType = document.getElementById('select-api-type');
 const inputApiKey = document.getElementById('input-api-key');
 const inputApiUrl = document.getElementById('input-api-url');
+const inputApiModel = document.getElementById('input-api-model');
 const btnSaveApiSettings = document.getElementById('btn-save-api-settings');
 const apiSettingsError = document.getElementById('api-settings-error');
 
@@ -124,6 +125,7 @@ async function loadConfigAndScan() {
       selectApiType.value = currentWorkspaceConfig.apiType || 'gemini';
       inputApiKey.value = currentWorkspaceConfig.apiKey || '';
       inputApiUrl.value = currentWorkspaceConfig.apiBaseUrl || '';
+      inputApiModel.value = currentWorkspaceConfig.apiModel || '';
       updateTranscribeApiStatusUI();
       
       // 加载侧边栏快速通道
@@ -139,8 +141,8 @@ async function loadConfigAndScan() {
 
 function updateTranscribeApiStatusUI() {
   if (currentWorkspaceConfig.apiKey) {
-    const typeName = currentWorkspaceConfig.apiType === 'gemini' ? 'Gemini' : 'Whisper';
-    transcribeApiStatus.textContent = `API 已配置: ${typeName}`;
+    const modelName = currentWorkspaceConfig.apiModel || (currentWorkspaceConfig.apiType === 'gemini' ? 'gemini-1.5-flash' : 'whisper-1');
+    transcribeApiStatus.textContent = `API 已配置: ${modelName}`;
     transcribeApiStatus.classList.add('active');
   } else {
     transcribeApiStatus.textContent = '未配置 API';
@@ -535,6 +537,7 @@ btnSaveApiSettings.addEventListener('click', async () => {
   const apiType = selectApiType.value;
   const apiKey = inputApiKey.value.trim();
   const apiBaseUrl = inputApiUrl.value.trim();
+  const apiModel = inputApiModel.value.trim();
 
   if (!apiKey) {
     apiSettingsError.textContent = 'API Key 不能为空';
@@ -544,7 +547,7 @@ btnSaveApiSettings.addEventListener('click', async () => {
   btnSaveApiSettings.disabled = true;
   apiSettingsError.textContent = '';
   try {
-    const res = await window.api.saveApiSettings({ apiType, apiKey, apiBaseUrl });
+    const res = await window.api.saveApiSettings({ apiType, apiKey, apiBaseUrl, apiModel });
     if (res.success) {
       showToast('API 接口配置保存成功！');
       currentWorkspaceConfig = res.config;

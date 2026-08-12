@@ -7,7 +7,8 @@ let currentConfig = {
   rootPath: path.resolve(__dirname, '..'), // 默认上一层目录
   apiType: 'gemini',
   apiKey: '',
-  apiBaseUrl: ''
+  apiBaseUrl: '',
+  apiModel: ''
 };
 
 function initConfig() {
@@ -318,10 +319,11 @@ ipcMain.handle('open-item', async (event, targetFullPath) => {
 });
 
 // IPC Handler: 保存 API 配置
-ipcMain.handle('save-api-settings', (event, { apiType, apiKey, apiBaseUrl }) => {
+ipcMain.handle('save-api-settings', (event, { apiType, apiKey, apiBaseUrl, apiModel }) => {
   currentConfig.apiType = apiType;
   currentConfig.apiKey = apiKey;
   currentConfig.apiBaseUrl = apiBaseUrl;
+  currentConfig.apiModel = apiModel;
   saveConfig();
   return { success: true, config: currentConfig };
 });
@@ -344,7 +346,8 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
     if (currentConfig.apiType === 'gemini') {
       const base64Data = fs.readFileSync(filePath).toString('base64');
       const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
-      const url = `${baseUrl}/v1beta/models/gemini-1.5-flash:generateContent?key=${currentConfig.apiKey}`;
+      const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
+      const url = `${baseUrl}/v1beta/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -386,7 +389,8 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
       const fileBuffer = fs.readFileSync(filePath);
       const fileBlob = new Blob([fileBuffer], { type: mimeType });
       formData.append('file', fileBlob, path.basename(filePath));
-      formData.append('model', 'whisper-1');
+      const modelName = currentConfig.apiModel || 'whisper-1';
+      formData.append('model', modelName);
 
       const response = await fetch(url, {
         method: 'POST',
