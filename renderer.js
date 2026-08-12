@@ -1979,3 +1979,14 @@ function writeString(view, offset, string) {
     view.setUint8(offset + i, string.charCodeAt(i));
   }
 }
+
+// 绑定自定义窗口标题栏的控制按钮点击事件
+document.getElementById('titlebar-minimize-btn').addEventListener('click', () => {
+  window.api.minimizeWindow();
+});
+document.getElementById('titlebar-maximize-btn').addEventListener('click', () => {
+  window.api.maximizeWindow();
+});
+document.getElementById('titlebar-close-btn').addEventListener('click', () => {
+  window.api.closeWindow();
+});

@@ -1464,6 +1464,83 @@ body {
   border-bottom: 2px solid var(--primary) !important;
 }
 
+/* Custom Title Bar Styling */
+.app-titlebar {
+  height: 32px;
+  background: #0b0f19; /* 稍微深一点的蓝黑色，营造叠层阴影 */
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+}
+
+.titlebar-drag-area {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding-left: 16px;
+  -webkit-app-region: drag; /* 声明此区域支持鼠标拖动窗口 */
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.titlebar-logo {
+  color: var(--primary);
+  margin-right: 8px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+}
+
+.titlebar-title {
+  letter-spacing: 0.5px;
+}
+
+.titlebar-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag; /* 移除拖拽，使得控制按钮可以响应鼠标点击 */
+}
+
+.titlebar-btn {
+  width: 46px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.titlebar-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
+.titlebar-btn.close-btn:hover {
+  background: #ef4444 !important; /* 关闭按钮红色警示 */
+  color: white !important;
+}
+
+/* 调整原有主窗口容器，使其向下偏移出标题栏的高度，且自适应剩余的高度 */
+.app-container {
+  margin-top: 32px;
+  height: calc(100vh - 32px) !important;
+}
+
 
 
 

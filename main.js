@@ -41,6 +41,7 @@ function createWindow () {
     height: 800,
     minWidth: 950,
     minHeight: 650,
+    frame: false, // 设为无边框窗口，适配自定义标题栏 UI
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -59,6 +60,21 @@ function createWindow () {
       return callback(true);
     }
     callback(false);
+  });
+  
+  // 窗口控制 IPC 通道监听
+  ipcMain.on('window-minimize', () => {
+    win.minimize();
+  });
+  ipcMain.on('window-maximize', () => {
+    if (win.isMaximized()) {
+      win.unmaximize();
+    } else {
+      win.maximize();
+    }
+  });
+  ipcMain.on('window-close', () => {
+    win.close();
   });
   
   win.once('ready-to-show', () => {
@@ -401,16 +417,21 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
       }
       return { success: true, text };
 
-    } else if (currentConfig.apiType === 'openai-whisper') {
-      const baseUrl = currentConfig.apiBaseUrl || 'https://api.openai.com/v1';
-      const url = `${baseUrl}/audio/transcriptions`;
+    } else if (currentConfig.apiType === 'openai-whisper' || currentConfig.apiType === 'deepseek') {
+      const isDeepSeek = currentConfig.apiType === 'deepseek';
+      const baseUrl = currentConfig.apiBaseUrl || (isDeepSeek ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
+      
+      let url = baseUrl;
+      if (!url.endsWith('/v1') && !url.endsWith('/v1/')) {
+        url = url.endsWith('/') ? `${url}v1` : `${url}/v1`;
+      }
+      url = `${url}/audio/transcriptions`;
 
       const formData = new FormData();
       const fileBuffer = fs.readFileSync(filePath);
       const fileBlob = new Blob([fileBuffer], { type: mimeType });
       formData.append('file', fileBlob, path.basename(filePath));
-      const modelName = currentConfig.apiModel || 'whisper-1';
-      formData.append('model', modelName);
+      formData.append('model', 'whisper-1');
 
       const response = await fetch(url, {
         method: 'POST',
@@ -422,7 +443,10 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
 
       if (!response.ok) {
         const errorText = await response.text();
-        return { success: false, error: `OpenAI API 错误 (HTTP ${response.status}): ${errorText}` };
+        if (isDeepSeek && (response.status === 404 || response.status === 405)) {
+          return { success: false, error: '官方 DeepSeek 接口不支持音频转录。如果是中转代理接口，请检查代理地址是否配置正确；如果是官方 API，请切换为 Gemini。' };
+        }
+        return { success: false, error: `音频转录 API 错误 (HTTP ${response.status}): ${errorText}` };
       }
 
       const json = await response.json();
@@ -620,7 +644,12 @@ ipcMain.handle('interpret-audio-slice', async (event, base64Data, targetLang) =>
     if (!currentConfig.apiKey) {
       return { success: false, error: '未配置 API Key，请前往设置配置。' };
     }
-    if (currentConfig.apiType === 'gemini') {
+    
+    const isDeepSeek = currentConfig.apiType === 'deepseek';
+    const isGemini = currentConfig.apiType === 'gemini';
+    const isWhisper = currentConfig.apiType === 'openai-whisper';
+    
+    if (isGemini) {
       const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
       const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
       const url = `${baseUrl}/v1/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
@@ -673,8 +702,115 @@ Directly output the result in the above format, do not include any markdown bold
         return { success: false, error: 'API 返回内容为空' };
       }
       return { success: true, text };
+    } else if (isDeepSeek || isWhisper) {
+      // 步骤 1：使用 Whisper 进行分片语音转文字
+      const stream = require('stream');
+      const buffer = Buffer.from(base64Data, 'base64');
+      const bufferStream = new stream.PassThrough();
+      bufferStream.end(buffer);
+      
+      const whisperBaseUrl = currentConfig.apiBaseUrl || (isDeepSeek ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
+      let whisperUrl = whisperBaseUrl;
+      if (!whisperUrl.endsWith('/v1') && !whisperUrl.endsWith('/v1/')) {
+        whisperUrl = whisperUrl.endsWith('/') ? `${whisperUrl}v1` : `${whisperUrl}/v1`;
+      }
+      whisperUrl = `${whisperUrl}/audio/transcriptions`;
+      
+      const FormData = require('form-data');
+      const form = new FormData();
+      form.append('file', bufferStream, {
+        filename: 'slice.webm',
+        contentType: 'audio/webm'
+      });
+      form.append('model', 'whisper-1');
+      
+      let transcriptionText = '';
+      try {
+        const whisperResponse = await fetch(whisperUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${currentConfig.apiKey}`,
+            ...form.getHeaders()
+          },
+          body: form
+        });
+        
+        if (!whisperResponse.ok) {
+          const errBody = await whisperResponse.text();
+          if (isDeepSeek && (whisperResponse.status === 404 || whisperResponse.status === 405)) {
+            return { 
+              success: false, 
+              error: '官方 DeepSeek 接口不支持音频输入。如果您使用的是代理密钥，请检查设置中的代理地址；如果使用的是官方 DeepSeek 密钥，请在设置中将“接口类型”切换为 Gemini 以启用同传音频功能。'
+            };
+          }
+          return { success: false, error: `语音转录失败 (HTTP ${whisperResponse.status}): ${errBody}` };
+        }
+        
+        const whisperJson = await whisperResponse.json();
+        transcriptionText = whisperJson.text || '';
+      } catch (err) {
+        return { success: false, error: '语音转录过程发生网络异常: ' + err.message };
+      }
+      
+      if (!transcriptionText.trim()) {
+        return { success: true, text: '（静音或未检测到发言） ||| （翻译未生成）' };
+      }
+      
+      // 步骤 2：使用 DeepSeek/OpenAI 进行文本翻译
+      const chatBaseUrl = currentConfig.apiBaseUrl || (isDeepSeek ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
+      let chatUrl = chatBaseUrl;
+      if (!chatUrl.endsWith('/v1') && !chatUrl.endsWith('/v1/')) {
+        chatUrl = chatUrl.endsWith('/') ? `${chatUrl}v1` : `${chatUrl}/v1`;
+      }
+      chatUrl = `${chatUrl}/chat/completions`;
+      
+      const modelName = currentConfig.apiModel || (isDeepSeek ? 'deepseek-chat' : 'gpt-4o-mini');
+      const promptText = `You are a professional simultaneous interpreter for Model United Nations debates.
+Please translate the following transcribed spoken text.
+If targetLang is 'zh-to-en', translate Chinese text into English.
+If targetLang is 'en-to-zh', translate English text into Chinese.
+Please first output the original transcription, and then translate it.
+Format your output strictly as:
+[Original Transcription] ||| [Translation]
+
+Example 1:
+大家好，我是联合国代表。 ||| Hello everyone, I am the delegate of the United Nations.
+
+Example 2:
+We must address this issue immediately. ||| 我们必须立刻解决这个问题。
+
+Transcribed speech to interpret:
+${transcriptionText}
+
+The current translation configuration is: ${targetLang === 'zh-to-en' ? 'Chinese to English' : 'English to Chinese'}.
+Directly output the result in the above format, do not include any markdown bolding, prefixes, explanations, or headings.`;
+
+      const chatResponse = await fetch(chatUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [{ role: 'user', content: promptText }],
+          temperature: 0.3
+        })
+      });
+
+      if (!chatResponse.ok) {
+        const errText = await chatResponse.text();
+        return { success: false, error: `同传翻译 API 错误 (HTTP ${chatResponse.status}): ${errText}` };
+      }
+
+      const chatJson = await chatResponse.json();
+      const textResult = chatJson.choices?.[0]?.message?.content;
+      if (!textResult) {
+        return { success: false, error: '同传翻译返回内容为空' };
+      }
+      return { success: true, text: textResult.trim() };
     } else {
-      return { success: false, error: '同传实时录音暂仅支持 Gemini API 系列模型，请配置 API 类别为 Gemini。' };
+      return { success: false, error: '暂不支持的 API 类别' };
     }
   } catch (err) {
     return { success: false, error: err.message };
@@ -687,12 +823,12 @@ ipcMain.handle('translate-text', async (event, text, targetLang) => {
     if (!currentConfig.apiKey) {
       return { success: false, error: '未配置 API Key，请前往“工作区路径”设置。' };
     }
-    if (currentConfig.apiType === 'gemini') {
-      const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
-      const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
-      const url = `${baseUrl}/v1/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
-      
-      const promptText = `You are a professional translator.
+    
+    const isDeepSeek = currentConfig.apiType === 'deepseek';
+    const isGemini = currentConfig.apiType === 'gemini';
+    const isWhisper = currentConfig.apiType === 'openai-whisper';
+    
+    const promptText = `You are a professional translator.
 Please translate the following text into ${targetLang === 'to-en' ? 'English' : 'Chinese'}.
 Translate exactly what is provided. Keep the tone natural and appropriate for Model United Nations debates or academic contexts if relevant.
 Do not output any introductory or explanatory text. Direct output the translated result only.
@@ -700,6 +836,11 @@ Do not output any introductory or explanatory text. Direct output the translated
 Text to translate:
 ${text}`;
 
+    if (isGemini) {
+      const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
+      const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
+      const url = `${baseUrl}/v1/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -723,8 +864,42 @@ ${text}`;
         return { success: false, error: 'API 接口返回了空翻译结果。' };
       }
       return { success: true, text: translatedText.trim() };
+    } else if (isDeepSeek || isWhisper) {
+      const baseUrl = currentConfig.apiBaseUrl || (isDeepSeek ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
+      const modelName = currentConfig.apiModel || (isDeepSeek ? 'deepseek-chat' : 'gpt-4o-mini');
+      
+      let url = baseUrl;
+      if (!url.endsWith('/v1') && !url.endsWith('/v1/')) {
+        url = url.endsWith('/') ? `${url}v1` : `${url}/v1`;
+      }
+      url = `${url}/chat/completions`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [{ role: 'user', content: promptText }],
+          temperature: 0.3
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return { success: false, error: `API 错误 (HTTP ${response.status}): ${errText}` };
+      }
+
+      const json = await response.json();
+      const translatedText = json.choices?.[0]?.message?.content;
+      if (!translatedText) {
+        return { success: false, error: 'API 接口返回了空翻译结果。' };
+      }
+      return { success: true, text: translatedText.trim() };
     } else {
-      return { success: false, error: '文本翻译暂仅支持 Gemini API，请配置 API 类别为 Gemini。' };
+      return { success: false, error: '暂不支持的 API 类型' };
     }
   } catch (err) {
     return { success: false, error: err.message };
