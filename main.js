@@ -116,7 +116,22 @@ app.whenReady().then(() => {
         }
       }
       fileUrl = 'file:///' + localPath;
-      return net.fetch(fileUrl).catch(err => {
+      
+      // 提取原始 Range 请求头部，支持 Chromium 媒体文件的分段读取 (206) 以计算时长并支持拖动快进
+      const headers = {};
+      if (request.headers) {
+        const range = typeof request.headers.get === 'function'
+          ? request.headers.get('range')
+          : request.headers['range'];
+        if (range) {
+          headers['range'] = range;
+        }
+      }
+      
+      return net.fetch(fileUrl, {
+        headers: headers,
+        method: request.method
+      }).catch(err => {
         try {
           const logFile = path.join(app.getPath('userData'), 'debug_protocol.log');
           fs.appendFileSync(logFile, `[net.fetch Error] ${new Date().toISOString()} | URL: ${request.url} -> Mapped: ${fileUrl} | Message: ${err.message}\n`);

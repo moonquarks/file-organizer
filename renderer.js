@@ -1434,11 +1434,11 @@ let analyserNode = null;
 let canvasCtx = null;
 let drawVisual = null;
 
-function setupVisualizer(stream) {
+function setupVisualizer(stream, sharedCtx = null) {
   if (!recordVisualizer) return;
   canvasCtx = recordVisualizer.getContext('2d');
   
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  audioCtx = sharedCtx || new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
@@ -1513,15 +1513,16 @@ async function startRecording() {
     btnRecordStop.style.background = 'var(--danger)';
     recordStatusText.innerHTML = '<span style="color:var(--danger); font-weight:bold;"><i class="fa-solid fa-circle fa-beat" style="margin-right:6px;"></i> 正在录音并对齐中...</span>';
     
-    // 启动示波器
-    setupVisualizer(mediaStream);
-    
     // 主录音器：PCM 原始流采集
     wavAudioChunks = [];
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     if (audioContext.state === 'suspended') {
       await audioContext.resume();
     }
+    
+    // 启动示波器（共享已激活的 AudioContext，防驱动独占）
+    setupVisualizer(mediaStream, audioContext);
+    
     microphoneSource = audioContext.createMediaStreamSource(mediaStream);
     // 建立 4096 字节缓冲区，双输入、双输出声道
     scriptProcessorNode = audioContext.createScriptProcessor(4096, 2, 2);
@@ -2021,8 +2022,16 @@ document.getElementById('titlebar-close-btn').addEventListener('click', () => {
 // 获取并填充麦克风和扬声器硬件设备列表
 async function populateMediaDevices() {
   try {
-    // 首次载入请求一次简单授权以允许获取真实设备标签 Label
-    await navigator.mediaDevices.getUserMedia({ audio: true });
+    // 尝试激活授权以获取真实设备标签 Label，但即使失败也绝不阻塞后续列表枚举
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop()); // 立即释放占用，保持通道干净
+      }
+    } catch (e) {
+      console.warn('获取麦克风标签权限被拦截或设备被独占占满:', e.message);
+    }
+
     const devices = await navigator.mediaDevices.enumerateDevices();
     
     // 初始化清空下拉菜单并恢复默认选项
