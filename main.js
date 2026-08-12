@@ -251,22 +251,26 @@ ipcMain.handle('get-all-audios', async () => {
   
   function scan(dirPath) {
     if (!fs.existsSync(dirPath)) return;
-    const items = fs.readdirSync(dirPath, { withFileTypes: true });
-    for (const item of items) {
-      if (item.name.startsWith('~$') || item.name === 'node_modules' || item.name === '.git' || item.name === 'Flies CSS' || item.name === 'app') continue;
-      const fullPath = path.join(dirPath, item.name);
-      if (item.isDirectory()) {
-        scan(fullPath);
-      } else {
-        const ext = path.extname(item.name).toLowerCase();
-        if (['.mp3', '.ogg', '.wav'].includes(ext)) {
-          audios.push({
-            name: item.name,
-            fullPath: fullPath,
-            relativePath: path.relative(currentConfig.rootPath, fullPath)
-          });
+    try {
+      const items = fs.readdirSync(dirPath, { withFileTypes: true });
+      for (const item of items) {
+        if (item.name.startsWith('~$') || item.name.startsWith('.') || item.name === 'node_modules' || item.name === '.git' || item.name === 'Flies CSS' || item.name === 'app' || item.name === 'Manner') continue;
+        const fullPath = path.join(dirPath, item.name);
+        if (item.isDirectory()) {
+          scan(fullPath);
+        } else {
+          const ext = path.extname(item.name).toLowerCase();
+          if (['.mp3', '.ogg', '.wav'].includes(ext)) {
+            audios.push({
+              name: item.name,
+              fullPath: fullPath,
+              relativePath: path.relative(currentConfig.rootPath, fullPath)
+            });
+          }
         }
       }
+    } catch (e) {
+      console.warn('忽略读取失败的文件夹:', dirPath, e.message);
     }
   }
 
