@@ -1847,9 +1847,15 @@ btnRecordStop.addEventListener('click', stopRecording);
 btnSaveInterpret.addEventListener('click', async () => {
   if (interpretationHistory.length === 0) return;
   
+  // 自动生成默认标题，自动规避重名，规避不稳定的 Electron window.prompt 弹窗
   const defaultTitle = `Interpret_${formatDateForFile(new Date())}`;
-  const noteTitle = prompt('请输入导出便签的名称：', defaultTitle);
-  if (!noteTitle) return;
+  await loadNotesList();
+  let count = 1;
+  let filename = defaultTitle + '.md';
+  while (notesList.some(n => n.name.toLowerCase() === filename.toLowerCase())) {
+    filename = `${defaultTitle}_${count}.md`;
+    count++;
+  }
   
   let mdContent = `# 同声传译转录文档 (${selectInterpretLang.value === 'zh-to-en' ? '中译英' : '英译中'})\n`;
   mdContent += `* 导出时间：${new Date().toLocaleString()}\n\n`;
@@ -1861,10 +1867,10 @@ btnSaveInterpret.addEventListener('click', async () => {
   });
   
   try {
-    const filename = noteTitle + '.md';
     const res = await window.api.saveNote(filename, mdContent);
     if (res.success) {
       showToast(`已成功导出至便签：${filename}`);
+      await loadNotesList(); // 立即重新加载便签列表，保持左侧列表实时同步！
     } else {
       showToast('导出便签失败: ' + res.error, true);
     }
@@ -1968,9 +1974,15 @@ btnExportTranslate.addEventListener('click', async () => {
   const srcText = textareaTranslateSrc.value.trim();
   if (!resultText || !srcText) return;
   
+  // 自动生成默认标题，自动规避重名，规避不稳定的 Electron window.prompt 弹窗
   const defaultTitle = `Translation_${formatDateForFile(new Date())}`;
-  const noteTitle = prompt('请输入导出便签的名称：', defaultTitle);
-  if (!noteTitle) return;
+  await loadNotesList();
+  let count = 1;
+  let filename = defaultTitle + '.md';
+  while (notesList.some(n => n.name.toLowerCase() === filename.toLowerCase())) {
+    filename = `${defaultTitle}_${count}.md`;
+    count++;
+  }
   
   let mdContent = `# 文本翻译文档\n`;
   mdContent += `* 导出时间：${new Date().toLocaleString()}\n`;
@@ -1979,10 +1991,10 @@ btnExportTranslate.addEventListener('click', async () => {
   mdContent += `### 译文\n\`\`\`text\n${resultText}\n\`\`\`\n`;
   
   try {
-    const filename = noteTitle + '.md';
     const res = await window.api.saveNote(filename, mdContent);
     if (res.success) {
       showToast(`已成功导出至便签：${filename}`);
+      await loadNotesList(); // 立即重新加载便签列表，保持左侧列表实时同步！
     } else {
       showToast('导出便签失败: ' + res.error, true);
     }
