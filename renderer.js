@@ -1425,6 +1425,9 @@ function setupVisualizer(stream) {
   canvasCtx = recordVisualizer.getContext('2d');
   
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
   const source = audioCtx.createMediaStreamSource(stream);
   analyserNode = audioCtx.createAnalyser();
   analyserNode.fftSize = 256;
@@ -1495,6 +1498,9 @@ async function startRecording() {
     // 主录音器：PCM 原始流采集
     wavAudioChunks = [];
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
     microphoneSource = audioContext.createMediaStreamSource(mediaStream);
     // 建立 4096 字节缓冲区，双输入、双输出声道
     scriptProcessorNode = audioContext.createScriptProcessor(4096, 2, 2);
