@@ -101,6 +101,7 @@ const apiSettingsError = document.getElementById('api-settings-error');
 // 音频硬件设备选择 DOM 声明
 const selectAudioInput = document.getElementById('select-audio-input');
 const selectAudioOutput = document.getElementById('select-audio-output');
+const selectInterpretDuration = document.getElementById('select-interpret-duration');
 const btnSaveDeviceSettings = document.getElementById('btn-save-device-settings');
 
 // Notes Elements
@@ -1643,6 +1644,12 @@ function startInterpretationSlices(stream) {
       sliceAudioChunks.push(e.data);
     }
   };
+  
+  const getSliceDurationMs = () => {
+    const savedSec = parseInt(localStorage.getItem('selectedInterpretDuration') || '10', 10);
+    return savedSec * 1000;
+  };
+
   sliceAudioRecorder.onstop = async () => {
     if (sliceAudioChunks.length > 0) {
       const blob = new Blob(sliceAudioChunks, { type: 'audio/webm' });
@@ -1655,7 +1662,7 @@ function startInterpretationSlices(stream) {
         if (sliceAudioRecorder.state === 'recording') {
           sliceAudioRecorder.stop();
         }
-      }, 5000);
+      }, getSliceDurationMs());
     }
   };
   
@@ -1664,15 +1671,43 @@ function startInterpretationSlices(stream) {
     if (sliceAudioRecorder.state === 'recording') {
       sliceAudioRecorder.stop();
     }
-  }, 5000);
+  }, getSliceDurationMs());
 }
+
+const sliceAccumulatedTexts = {};
+
+window.api.onInterpretSliceChunk((data) => {
+  const { taskId, chunk } = data;
+  const tempElement = document.getElementById(taskId);
+  if (tempElement) {
+    if (!sliceAccumulatedTexts[taskId]) {
+      sliceAccumulatedTexts[taskId] = '';
+    }
+    sliceAccumulatedTexts[taskId] += chunk;
+    
+    const parts = sliceAccumulatedTexts[taskId].split('|||');
+    const original = parts[0]?.trim() || '';
+    const translation = parts[1]?.trim() || '';
+    const timeStr = tempElement.dataset.timeStr || '--:--';
+    
+    tempElement.innerHTML = `
+      <div style="font-size:0.75rem; color:var(--primary); font-weight:bold; margin-bottom:4px;">[${timeStr}]</div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <p style="font-size:0.85rem; color:var(--text-main); margin:0;">${original || '<i class="fa-solid fa-spinner fa-spin"></i> 正在识别原文...'}</p>
+        <p style="font-size:0.85rem; color:var(--success); font-weight:500; margin:0;">${translation || '<i class="fa-solid fa-spinner fa-spin"></i> 正在翻译...'}</p>
+      </div>
+    `;
+    interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+  }
+});
 
 async function processSlice(blob, relativeTimeMs) {
   const arrayBuffer = await blob.arrayBuffer();
   const base64Data = arrayBufferToBase64(arrayBuffer);
   
   const tempId = 'interpret-temp-' + Date.now();
-  const seconds = Math.floor(relativeTimeMs / 1000) - 5;
+  const sliceDurationSec = parseInt(localStorage.getItem('selectedInterpretDuration') || '10', 10);
+  const seconds = Math.floor(relativeTimeMs / 1000) - sliceDurationSec;
   const formatSec = seconds < 0 ? 0 : seconds;
   const m = String(Math.floor(formatSec / 60)).padStart(2, '0');
   const s = String(formatSec % 60).padStart(2, '0');
@@ -1680,20 +1715,21 @@ async function processSlice(blob, relativeTimeMs) {
   
   const tempBubble = document.createElement('div');
   tempBubble.id = tempId;
+  tempBubble.dataset.timeStr = timeStr; // 存放时间戳供流式渲染使用
   tempBubble.style.padding = '8px 12px';
   tempBubble.style.borderLeft = '3px solid var(--primary)';
   tempBubble.style.background = 'rgba(255,255,255,0.02)';
   tempBubble.style.borderRadius = '4px';
   tempBubble.style.textAlign = 'left';
   tempBubble.style.margin = '4px 0';
-  tempBubble.innerHTML = `<span style="font-size:0.75rem; color:var(--primary); font-weight:bold;">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> 正在翻译同传...</span>`;
+  tempBubble.innerHTML = `<span style="font-size:0.75rem; color:var(--primary); font-weight:bold;">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> 正在识别和翻译同传...</span>`;
   interpretLogContainer.appendChild(tempBubble);
   interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
   
   const targetLang = selectInterpretLang.value;
   try {
     const recentHistory = interpretationHistory.slice(-2);
-    const res = await window.api.interpretAudioSlice(base64Data, targetLang, recentHistory);
+    const res = await window.api.interpretAudioSlice(base64Data, targetLang, recentHistory, tempId);
     const tempElement = document.getElementById(tempId);
     if (res.success) {
       const textResult = res.text.trim();
@@ -1726,7 +1762,7 @@ async function processSlice(blob, relativeTimeMs) {
   } catch (err) {
     const tempElement = document.getElementById(tempId);
     if (tempElement) {
-      tempElement.innerHTML = `<span style="font-size:0.75rem; color:var(--danger);">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--danger);">网络连接异常</span>`;
+      tempElement.innerHTML = `<span style="font-size:0.75rem; color:var(--danger);">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--danger);">网络连接异常: ${err.message}</span>`;
     }
   }
   interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
@@ -2050,6 +2086,10 @@ async function populateMediaDevices() {
     
     const savedMic = localStorage.getItem('selectedMicrophoneId') || '';
     const savedSpeaker = localStorage.getItem('selectedSpeakerId') || '';
+    const savedDuration = localStorage.getItem('selectedInterpretDuration') || '10';
+    
+    // 回显保存的时长配置
+    selectInterpretDuration.value = savedDuration;
     
     devices.forEach(device => {
       if (device.kind === 'audioinput') {
@@ -2071,12 +2111,15 @@ async function populateMediaDevices() {
   }
 }
 
-// 绑定保存音频设备配置事件
+// 绑定保存音频与同传配置事件
 btnSaveDeviceSettings.addEventListener('click', () => {
   const micId = selectAudioInput.value;
   const speakerId = selectAudioOutput.value;
+  const duration = selectInterpretDuration.value;
+  
   localStorage.setItem('selectedMicrophoneId', micId);
   localStorage.setItem('selectedSpeakerId', speakerId);
+  localStorage.setItem('selectedInterpretDuration', duration);
   
   // 立即将所选的扬声器应用到主音频播放器上！
   if (typeof htmlAudioPlayer.setSinkId === 'function') {
@@ -2085,5 +2128,5 @@ btnSaveDeviceSettings.addEventListener('click', () => {
     });
   }
   
-  showToast('音频输入输出设备配置保存成功！');
+  showToast('音频及同传配置保存成功！');
 });

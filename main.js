@@ -787,8 +787,8 @@ ipcMain.handle('list-record-files', async () => {
   }
 });
 
-// IPC Handler: 实时同声传译音频片段
-ipcMain.handle('interpret-audio-slice', async (event, base64Data, targetLang, recentHistory = []) => {
+// IPC Handler: 实时同声传译音频片段 (支持自定义时长和流式打字机输出)
+ipcMain.handle('interpret-audio-slice', async (event, base64Data, targetLang, recentHistory = [], taskId) => {
   try {
     if (!currentConfig.apiKey) {
       return { success: false, error: '未配置 API Key，请前往设置配置。' };
@@ -808,7 +808,8 @@ ipcMain.handle('interpret-audio-slice', async (event, base64Data, targetLang, re
     if (isGemini) {
       const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
       const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
-      const url = `${baseUrl}/v1/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
+      // 使用 streamGenerateContent 接口实现流式返回
+      const url = `${baseUrl}/v1/models/${modelName}:streamGenerateContent?key=${currentConfig.apiKey}`;
       
       const promptText = `You are a professional simultaneous interpreter for Model United Nations debates.
 Please interpret the spoken audio chunk.
@@ -852,12 +853,46 @@ Directly output the result in the above format, do not include any markdown bold
         return { success: false, error: `API 错误 (HTTP ${response.status}): ${errText}` };
       }
 
-      const json = await response.json();
-      const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        return { success: false, error: 'API 返回内容为空' };
+      // 流式解析 Gemini 的 JSON 数组响应块
+      let buffer = '';
+      let fullText = '';
+      const decoder = new TextDecoder();
+      for await (const chunk of response.body) {
+        buffer += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
+        
+        if (buffer.startsWith('[')) {
+          buffer = buffer.slice(1);
+        }
+        
+        let braceCount = 0;
+        let startIdx = -1;
+        for (let i = 0; i < buffer.length; i++) {
+          if (buffer[i] === '{') {
+            if (braceCount === 0) startIdx = i;
+            braceCount++;
+          } else if (buffer[i] === '}') {
+            braceCount--;
+            if (braceCount === 0 && startIdx !== -1) {
+              const jsonStr = buffer.slice(startIdx, i + 1);
+              try {
+                const json = JSON.parse(jsonStr);
+                const chunkText = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                if (chunkText) {
+                  fullText += chunkText;
+                  event.sender.send('interpret-slice-chunk', { taskId, chunk: chunkText });
+                }
+              } catch (e) {
+                // 忽略非完整 JSON 块解析异常
+              }
+              buffer = buffer.slice(i + 1);
+              i = -1;
+              startIdx = -1;
+            }
+          }
+        }
       }
-      return { success: true, text };
+      return { success: true, text: fullText };
+      
     } else if (isDeepSeek || isWhisper) {
       // 步骤 1：使用 Whisper 进行分片语音转文字
       const stream = require('stream');
@@ -912,7 +947,7 @@ Directly output the result in the above format, do not include any markdown bold
         return { success: true, text: '（静音或未检测到发言） ||| （翻译未生成）' };
       }
       
-      // 步骤 2：使用 DeepSeek/OpenAI 进行文本翻译
+      // 步骤 2：使用 DeepSeek/OpenAI 进行文本翻译 (支持流式传输)
       const chatBaseUrl = currentConfig.apiBaseUrl || (isDeepSeek ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
       const chatUrl = chatBaseUrl.endsWith('/v1') || chatBaseUrl.endsWith('/v1/')
         ? (chatBaseUrl.endsWith('/') ? `${chatBaseUrl}chat/completions` : `${chatBaseUrl}/chat/completions`)
@@ -948,7 +983,8 @@ Directly output the result in the above format, do not include any markdown bold
         body: JSON.stringify({
           model: modelName,
           messages: [{ role: 'user', content: promptText }],
-          temperature: 0.3
+          temperature: 0.3,
+          stream: true // 启用 SSE 流式输出
         })
       });
 
@@ -957,12 +993,35 @@ Directly output the result in the above format, do not include any markdown bold
         return { success: false, error: `同传翻译 API 错误 (HTTP ${chatResponse.status}): ${errText}` };
       }
 
-      const chatJson = await chatResponse.json();
-      const textResult = chatJson.choices?.[0]?.message?.content;
-      if (!textResult) {
-        return { success: false, error: '同传翻译返回内容为空' };
+      // 流式解析 OpenAI/DeepSeek SSE data: 格式
+      let sseBuffer = '';
+      let fullText = '';
+      const decoder = new TextDecoder();
+      for await (const chunk of chatResponse.body) {
+        const text = typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
+        sseBuffer += text;
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop(); // 保留不完整的一行
+        
+        for (const line of lines) {
+          const cleanLine = line.trim();
+          if (cleanLine.startsWith('data: ')) {
+            const dataStr = cleanLine.slice(6);
+            if (dataStr === '[DONE]') continue;
+            try {
+              const json = JSON.parse(dataStr);
+              const chunkText = json.choices?.[0]?.delta?.content || '';
+              if (chunkText) {
+                fullText += chunkText;
+                event.sender.send('interpret-slice-chunk', { taskId, chunk: chunkText });
+              }
+            } catch (e) {
+              // 忽略碎片块解析错误
+            }
+          }
+        }
       }
-      return { success: true, text: textResult.trim() };
+      return { success: true, text: fullText };
     } else {
       return { success: false, error: '暂不支持的 API 类别' };
     }
