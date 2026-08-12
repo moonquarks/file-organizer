@@ -109,43 +109,45 @@
           <p>修改或设置当前文件管理器扫描的工作根目录</p>
         </header>
 
-        <div class="settings-card">
-          <h3>工作区根路径</h3>
-          <p class="description">在此输入你需要管理的文件文件夹的绝对路径。</p>
-          <div class="path-input-group">
-            <input type="text" id="input-root-path" placeholder="例如: C:\Users\xingc\OneDrive\Desktop\HMUNChina2026！">
-            <button class="action-btn primary" id="btn-save-path">保存并刷新</button>
+        <div class="settings-scroll-wrapper">
+          <div class="settings-card">
+            <h3>工作区根路径</h3>
+            <p class="description">在此输入你需要管理的文件文件夹的绝对路径。</p>
+            <div class="path-input-group">
+              <input type="text" id="input-root-path" placeholder="例如: C:\Users\xingc\OneDrive\Desktop\HMUNChina2026！">
+              <button class="action-btn primary" id="btn-save-path">保存并刷新</button>
+            </div>
+            <span class="error-msg" id="settings-error"></span>
           </div>
-          <span class="error-msg" id="settings-error"></span>
-        </div>
 
-        <div class="settings-card" style="margin-top: 24px;">
-          <h3>音频转文字 API 配置</h3>
-          <p class="description">配置 Gemini 1.5 Flash (可用免费额度) 或 OpenAI Whisper API 启用音频转录服务。</p>
-          <div class="settings-form">
-            <div class="form-group" style="margin-bottom: 12px;">
-              <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">接口类型</label>
-              <select id="select-api-type" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: var(--text-main); outline: none;">
-                <option value="gemini">Gemini API (推荐 - 可免费申请 Key)</option>
-                <option value="deepseek">DeepSeek API (支持高效文本翻译/同传对齐)</option>
-                <option value="openai-whisper">OpenAI Whisper API</option>
-              </select>
+          <div class="settings-card" style="margin-top: 24px;">
+            <h3>音频转文字 API 配置</h3>
+            <p class="description">配置 Gemini 1.5 Flash (可用免费额度)、DeepSeek API 或 OpenAI Whisper API 启用音频转录及翻译服务。</p>
+            <div class="settings-form">
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">接口类型</label>
+                <select id="select-api-type" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: var(--text-main); outline: none;">
+                  <option value="gemini">Gemini API (推荐 - 可免费申请 Key)</option>
+                  <option value="deepseek">DeepSeek API (支持高效文本翻译/同传对齐)</option>
+                  <option value="openai-whisper">OpenAI Whisper API</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">API Key (密钥)</label>
+                <input type="password" id="input-api-key" placeholder="请输入你的 API Key" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
+              </div>
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">模型编号 (选填，默认: gemini-1.5-flash 或 whisper-1)</label>
+                <input type="text" id="input-api-model" placeholder="例如: gemini-1.5-pro 或 gemini-2.0-flash" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
+              </div>
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">API 代理接口地址 (选填，为空则使用官方默认域名)</label>
+                <input type="text" id="input-api-url" placeholder="例如: https://api.yourproxy.com" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
+              </div>
+              <button class="action-btn primary" id="btn-save-api-settings">保存 API 配置</button>
             </div>
-            <div class="form-group" style="margin-bottom: 12px;">
-              <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">API Key (密钥)</label>
-              <input type="password" id="input-api-key" placeholder="请输入你的 API Key" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
-            </div>
-            <div class="form-group" style="margin-bottom: 12px;">
-              <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">模型编号 (选填，默认: gemini-1.5-flash 或 whisper-1)</label>
-              <input type="text" id="input-api-model" placeholder="例如: gemini-1.5-pro 或 gemini-2.0-flash" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
-            </div>
-            <div class="form-group" style="margin-bottom: 16px;">
-              <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">API 代理接口地址 (选填，为空则使用官方默认域名)</label>
-              <input type="text" id="input-api-url" placeholder="例如: https://api.yourproxy.com" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
-            </div>
-            <button class="action-btn primary" id="btn-save-api-settings">保存 API 配置</button>
+            <span class="error-msg" id="api-settings-error"></span>
           </div>
-          <span class="error-msg" id="api-settings-error"></span>
         </div>
       </section>
 

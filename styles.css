@@ -1444,10 +1444,35 @@ body {
   background: rgba(255, 255, 255, 0.03);
 }
 
-/* Settings View Scrollable Fix */
+/* Settings View Wrapper Fix */
 #settings-view {
+  overflow: hidden;
+  height: 100%;
+}
+
+.settings-scroll-wrapper {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding-right: 8px;
+  padding-right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Custom premium scrollbar for settings wrapper */
+.settings-scroll-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+.settings-scroll-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+.settings-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+.settings-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Translation Tabs styling */
