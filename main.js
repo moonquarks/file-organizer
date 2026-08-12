@@ -87,13 +87,9 @@ app.whenReady().then(() => {
   
   // 注册安全协议拦截器，将 app-file:// 协议转存并流式传回给 HTML5 audio
   protocol.handle('app-file', (request) => {
-    const url = new URL(request.url);
-    const decodedPath = decodeURIComponent(url.pathname);
-    let localPath = decodedPath;
-    if (process.platform === 'win32' && localPath.startsWith('/')) {
-      localPath = localPath.substring(1);
-    }
-    return net.fetch('file:///' + localPath);
+    // 保持原始的 URL 编码（避免 decode 后因中文叹号！或空格导致 net.fetch 崩溃）
+    const fileUrl = 'file://' + request.url.slice('app-file://'.length);
+    return net.fetch(fileUrl);
   });
 
   createWindow();
