@@ -2,6 +2,21 @@ const { app, BrowserWindow, ipcMain, shell, protocol, net } = require('electron'
 const path = require('path');
 const fs = require('fs');
 
+// 必须在 app.ready 之前调用，且只能调用一次！注册特权协议以正确支持盘符、反斜杠和媒体串流
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app-file',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+      bypassCSP: true
+    }
+  }
+]);
+
 let CONFIG_FILE = '';
 let currentConfig = {
   rootPath: path.resolve(__dirname, '..'), // 默认上一层目录
@@ -87,9 +102,14 @@ app.whenReady().then(() => {
   
   // 注册安全协议拦截器，将 app-file:// 协议转存并流式传回给 HTML5 audio
   protocol.handle('app-file', (request) => {
-    // 保持原始的 URL 编码（避免 decode 后因中文叹号！或空格导致 net.fetch 崩溃）
     const fileUrl = 'file://' + request.url.slice('app-file://'.length);
-    return net.fetch(fileUrl);
+    return net.fetch(fileUrl).catch(err => {
+      try {
+        const logFile = path.join(app.getPath('userData'), 'debug_protocol.log');
+        fs.appendFileSync(logFile, `[net.fetch Error] ${new Date().toISOString()} | URL: ${request.url} -> Mapped: ${fileUrl} | Message: ${err.message}\n`);
+      } catch (e) {}
+      throw err;
+    });
   });
 
   createWindow();
