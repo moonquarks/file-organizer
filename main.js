@@ -102,7 +102,6 @@ app.whenReady().then(() => {
   
   // 注册安全协议拦截器，将 app-file:// 协议转存并流式传回给 HTML5 audio
   protocol.handle('app-file', (request) => {
-    let fileUrl = '';
     try {
       const url = new URL(request.url);
       let localPath = '';
@@ -115,29 +114,56 @@ app.whenReady().then(() => {
           localPath = localPath.substring(1);
         }
       }
-      fileUrl = 'file:///' + localPath;
       
-      // 提取原始 Range 请求头部，支持 Chromium 媒体文件的分段读取 (206) 以计算时长并支持拖动快进
-      const headers = {};
-      if (request.headers) {
-        const range = typeof request.headers.get === 'function'
-          ? request.headers.get('range')
-          : request.headers['range'];
-        if (range) {
-          headers['range'] = range;
-        }
+      const filePath = decodeURIComponent(localPath);
+      
+      if (!fs.existsSync(filePath)) {
+        return new Response('Not Found', { status: 404 });
       }
       
-      return net.fetch(fileUrl, {
-        headers: headers,
-        method: request.method
-      }).catch(err => {
-        try {
-          const logFile = path.join(app.getPath('userData'), 'debug_protocol.log');
-          fs.appendFileSync(logFile, `[net.fetch Error] ${new Date().toISOString()} | URL: ${request.url} -> Mapped: ${fileUrl} | Message: ${err.message}\n`);
-        } catch (e) {}
-        throw err;
+      const stats = fs.statSync(filePath);
+      const fileSize = stats.size;
+      
+      // 根据扩展名自动识别 content-type
+      const ext = path.extname(filePath).toLowerCase();
+      let contentType = 'audio/mpeg';
+      if (ext === '.wav') contentType = 'audio/wav';
+      else if (ext === '.ogg') contentType = 'audio/ogg';
+      else if (ext === '.m4a') contentType = 'audio/x-m4a';
+      else if (ext === '.flac') contentType = 'audio/flac';
+      
+      // 处理 Range 分片请求，返回 206 状态，以完美计算音频时长和支持播放快进
+      const range = request.headers.get('range');
+      if (range) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : undefined;
+        const endByte = end !== undefined ? end : fileSize - 1;
+        const chunkSize = (endByte - start) + 1;
+        
+        const stream = fs.createReadStream(filePath, { start, end: endByte });
+        
+        return new Response(stream, {
+          status: 206,
+          headers: {
+            'Content-Range': `bytes ${start}-${endByte}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunkSize.toString(),
+            'Content-Type': contentType
+          }
+        });
+      }
+      
+      // 如果没有 Range header (默认直接请求，如元数据拉取)
+      const stream = fs.createReadStream(filePath);
+      return new Response(stream, {
+        headers: {
+          'Content-Length': fileSize.toString(),
+          'Content-Type': contentType,
+          'Accept-Ranges': 'bytes'
+        }
       });
+      
     } catch (e) {
       try {
         const logFile = path.join(app.getPath('userData'), 'debug_protocol.log');
