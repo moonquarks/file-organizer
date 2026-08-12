@@ -65,9 +65,9 @@ body {
 .sidebar-section {
   padding: 0 12px;
   margin-bottom: 24px;
-  flex: 1;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0; /* 版块紧凑贴合，不拉伸平分高度 */
 }
 
 .section-title {
@@ -84,17 +84,29 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 350px;
-  overflow-y: auto;
 }
 
-/* Scrollbar tweaks */
-.quick-links::-webkit-scrollbar {
+/* 侧边栏统一内容滚动区域 */
+.sidebar-menu-scroll {
+  flex: 1;
+  min-height: 0; /* 配合 flex 的溢出计算 */
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-menu-scroll::-webkit-scrollbar {
   width: 4px;
 }
-.quick-links::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+.sidebar-menu-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-menu-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 4px;
+}
+.sidebar-menu-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .nav-item {
