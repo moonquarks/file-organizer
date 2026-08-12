@@ -723,7 +723,7 @@ ipcMain.handle('save-record-file', async (event, filename, buffer) => {
             rightChannel[i] = dataSub.readInt16LE(i * 4 + 2);
           }
           
-          const lamejs = require('lamejs');
+          const lamejs = require('@breezystack/lamejs');
           const mp3encoder = new lamejs.Mp3Encoder(2, sampleRate, 128); // 双声道，128kbps 立体声
           const mp3Chunks = [];
           
