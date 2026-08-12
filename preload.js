@@ -19,5 +19,8 @@ contextBridge.exposeInMainWorld('api', {
   batchMove: (sourceFullPaths, destFolderFullPath) => ipcRenderer.invoke('batch-move', sourceFullPaths, destFolderFullPath),
   batchDelete: (targetFullPaths) => ipcRenderer.invoke('batch-delete', targetFullPaths),
   deleteItem: (targetFullPath) => ipcRenderer.invoke('delete-item', targetFullPath),
-  openItem: (targetFullPath) => ipcRenderer.invoke('open-item', targetFullPath)
+  openItem: (targetFullPath) => ipcRenderer.invoke('open-item', targetFullPath),
+  saveRecordFile: (filename, buffer) => ipcRenderer.invoke('save-record-file', filename, buffer),
+  listRecordFiles: () => ipcRenderer.invoke('list-record-files'),
+  interpretAudioSlice: (base64Data, targetLang) => ipcRenderer.invoke('interpret-audio-slice', base64Data, targetLang)
 });

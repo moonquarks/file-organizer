@@ -21,6 +21,8 @@ A modern, high-aesthetics desktop File Explorer/Manager replacement built with E
 *   **Workspace Quick Notes (快捷便签)**: Automatic `/Notes` workspace folder creator, visual split-screen Markdown editor, and live renderer. (在工作区自动维护 `Notes/` 文件夹，内置支持简易 Markdown 实时解析与双向预览)
 *   **In-app Markdown Reader (Markdown 阅读器)**: Double-clicking any standalone `.md` file inside the explorer opens an interactive viewer modal without polluting the notes workspace directory. (双击工作区内任意 `.md` 文件即可直接在应用内阅读渲染结果，不会另存或复制到 Notes 文件夹)
 *   **Multi-Select Batch Actions (项目多选与批量操作)**: Checkbox indicators allow users to batch classify (move) or batch delete selected files/folders in one go. (支持点击项目左上角进行多选，悬浮批量操作栏支持一键批量分类或批量删除)
+*   **Real-time Audio Recorder & Sim-Trans (录音同传工作台)**: A dedicated sidebar panel containing a real-time voice recorder with dual-channel output, dynamic wave visualizer, local recordings list, and 5-second slice translation (Chinese/English aligning). The resulting translation logs can be exported directly to the Notes workspace as a formatted Markdown table note. (新开的侧边栏模块，内置双声道录音、波形示波器、本地录音管理及 5 秒分段同传对齐翻译，可一键将翻译内容以精美表格格式直接导出为 Markdown 便签)
+*   **Mermaid Diagram Rendering (Mermaid 流程图渲染支持)**: Deep integration of the Mermaid.js layout engine, supporting automatic rendering of flowcharts, sequence diagrams, and class diagrams in both notes preview and standalone file readers. (深度集成 Mermaid 流程图引擎，可在便签预览和文件阅读器中自动将 mermaid 语法糖渲染为可视化矢量图表)
 
 ---
 

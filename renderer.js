@@ -9,6 +9,22 @@ const settingsView = document.getElementById('settings-view');
 const navSettingsBtn = document.getElementById('nav-settings-btn');
 const rootPathDisplay = document.getElementById('root-path-display');
 
+// Record & Interpretation View DOM references
+const recordView = document.getElementById('record-view');
+const navRecordBtn = document.getElementById('nav-record-btn');
+const recordTimer = document.getElementById('record-timer');
+const recordVisualizer = document.getElementById('record-visualizer');
+const btnRecordStart = document.getElementById('btn-record-start');
+const btnRecordStop = document.getElementById('btn-record-stop');
+const recordStatusText = document.getElementById('record-status-text');
+const recordingsContainer = document.getElementById('recordings-container');
+const recordingsCountBadge = document.getElementById('recordings-count-badge');
+const checkboxEnableInterpret = document.getElementById('checkbox-enable-interpret');
+const selectInterpretLang = document.getElementById('select-interpret-lang');
+const interpretLogContainer = document.getElementById('interpret-log-container');
+const interpretEmptyPlaceholder = document.getElementById('interpret-empty-placeholder');
+const btnSaveInterpret = document.getElementById('btn-save-interpret');
+
 const explorerGrid = document.getElementById('explorer-grid');
 const breadcrumbsContainer = document.getElementById('breadcrumbs-container');
 const btnBack = document.getElementById('btn-back');
@@ -117,6 +133,10 @@ function switchView(viewName) {
     notesView.classList.add('active');
     navNotesBtn.classList.add('active');
     loadNotesList();
+  } else if (viewName === 'record') {
+    recordView.classList.add('active');
+    navRecordBtn.classList.add('active');
+    loadRecordingsList();
   }
 }
 
@@ -596,6 +616,11 @@ navNotesBtn.addEventListener('click', () => {
 // navExplorerBtn 点击事件
 navExplorerBtn.addEventListener('click', () => {
   switchView('explorer');
+});
+
+// navRecordBtn 点击事件
+navRecordBtn.addEventListener('click', () => {
+  switchView('record');
 });
 
 // --- 音频播放器逻辑 ---
@@ -1355,4 +1380,382 @@ function triggerMermaidRender() {
       }
     }, 100);
   }
+}
+
+// --- 录音与实时同传核心引擎 ---
+let isRecording = false;
+let recordStartTime = null;
+let recordTimerInterval = null;
+let mediaStream = null;
+let mainAudioRecorder = null;
+let mainRecordedChunks = [];
+
+// 同传分片变量
+let sliceAudioRecorder = null;
+let sliceAudioChunks = [];
+let sliceTimer = null;
+let interpretationHistory = []; // { time: string, original: string, translation: string }
+
+// 录音波形可视化
+let audioCtx = null;
+let analyserNode = null;
+let canvasCtx = null;
+let drawVisual = null;
+
+function setupVisualizer(stream) {
+  if (!recordVisualizer) return;
+  canvasCtx = recordVisualizer.getContext('2d');
+  
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(stream);
+  analyserNode = audioCtx.createAnalyser();
+  analyserNode.fftSize = 256;
+  source.connect(analyserNode);
+  
+  const bufferLength = analyserNode.frequencyBinCount;
+  const dataArray = new Uint8Array(bufferLength);
+  
+  canvasCtx.clearRect(0, 0, recordVisualizer.width, recordVisualizer.height);
+  
+  function draw() {
+    if (!isRecording) return;
+    drawVisual = requestAnimationFrame(draw);
+    analyserNode.getByteFrequencyData(dataArray);
+    
+    canvasCtx.fillStyle = '#0f172a'; // 深色面板底色
+    canvasCtx.fillRect(0, 0, recordVisualizer.width, recordVisualizer.height);
+    
+    const barWidth = (recordVisualizer.width / bufferLength) * 1.5;
+    let barHeight;
+    let x = 0;
+    
+    for (let i = 0; i < bufferLength; i++) {
+      barHeight = dataArray[i] / 2.5;
+      // 渐变蓝色
+      canvasCtx.fillStyle = `rgb(${dataArray[i] + 80}, 99, 235)`;
+      canvasCtx.fillRect(x, recordVisualizer.height - barHeight, barWidth - 1, barHeight);
+      x += barWidth;
+    }
+  }
+  
+  draw();
+}
+
+function updateRecordTimer() {
+  const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
+  const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  recordTimer.textContent = `${m}:${s}`;
+}
+
+async function startRecording() {
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    
+    isRecording = true;
+    recordStartTime = Date.now();
+    recordTimer.textContent = '00:00';
+    recordTimerInterval = setInterval(updateRecordTimer, 1000);
+    
+    // UI状态切换
+    btnRecordStart.disabled = true;
+    btnRecordStart.style.background = '#475569';
+    btnRecordStart.style.boxShadow = 'none';
+    btnRecordStop.disabled = false;
+    btnRecordStop.style.background = 'var(--danger)';
+    recordStatusText.innerHTML = '<span style="color:var(--danger); font-weight:bold;"><i class="fa-solid fa-circle fa-beat" style="margin-right:6px;"></i> 正在录音并对齐中...</span>';
+    
+    // 启动示波器
+    setupVisualizer(mediaStream);
+    
+    // 主录音器开始
+    mainRecordedChunks = [];
+    mainAudioRecorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm' });
+    mainAudioRecorder.ondataavailable = e => {
+      if (e.data && e.data.size > 0) {
+        mainRecordedChunks.push(e.data);
+      }
+    };
+    mainAudioRecorder.onstop = async () => {
+      const blob = new Blob(mainRecordedChunks, { type: 'audio/webm' });
+      const arrayBuffer = await blob.arrayBuffer();
+      const now = new Date();
+      const filename = `Record_${formatDateForFile(now)}.webm`;
+      const res = await window.api.saveRecordFile(filename, new Uint8Array(arrayBuffer));
+      if (res.success) {
+        showToast('录音已自动保存！');
+        loadRecordingsList();
+      } else {
+        showToast('保存录音失败: ' + res.error, true);
+      }
+    };
+    mainAudioRecorder.start();
+    
+    // 同声传译分片开启
+    if (checkboxEnableInterpret.checked) {
+      interpretationHistory = [];
+      interpretLogContainer.innerHTML = '';
+      interpretEmptyPlaceholder.style.display = 'none';
+      btnSaveInterpret.disabled = true;
+      startInterpretationSlices(mediaStream);
+    } else {
+      interpretEmptyPlaceholder.style.display = 'flex';
+      interpretLogContainer.innerHTML = '';
+      btnSaveInterpret.disabled = true;
+    }
+  } catch (err) {
+    showToast('麦克风权限获取失败: ' + err.message, true);
+    isRecording = false;
+    btnRecordStart.disabled = false;
+    btnRecordStart.style.background = 'var(--danger)';
+    btnRecordStop.disabled = true;
+    btnRecordStop.style.background = '#475569';
+    recordStatusText.textContent = '录音机故障: ' + err.message;
+  }
+}
+
+function stopRecording() {
+  if (!isRecording) return;
+  
+  isRecording = false;
+  clearInterval(recordTimerInterval);
+  clearTimeout(sliceTimer);
+  
+  btnRecordStart.disabled = false;
+  btnRecordStart.style.background = 'var(--danger)';
+  btnRecordStart.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.35)';
+  btnRecordStop.disabled = true;
+  btnRecordStop.style.background = '#475569';
+  recordStatusText.textContent = '录音已停止，文件正在保存...';
+  
+  if (mainAudioRecorder && mainAudioRecorder.state === 'recording') {
+    mainAudioRecorder.stop();
+  }
+  
+  if (sliceAudioRecorder && sliceAudioRecorder.state === 'recording') {
+    sliceAudioRecorder.stop();
+  }
+  
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
+  }
+}
+
+function startInterpretationSlices(stream) {
+  sliceAudioChunks = [];
+  sliceAudioRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+  sliceAudioRecorder.ondataavailable = e => {
+    if (e.data && e.data.size > 0) {
+      sliceAudioChunks.push(e.data);
+    }
+  };
+  sliceAudioRecorder.onstop = async () => {
+    if (sliceAudioChunks.length > 0) {
+      const blob = new Blob(sliceAudioChunks, { type: 'audio/webm' });
+      sliceAudioChunks = [];
+      processSlice(blob, Date.now() - recordStartTime);
+    }
+    if (isRecording && checkboxEnableInterpret.checked) {
+      sliceAudioRecorder.start();
+      sliceTimer = setTimeout(() => {
+        if (sliceAudioRecorder.state === 'recording') {
+          sliceAudioRecorder.stop();
+        }
+      }, 5000);
+    }
+  };
+  
+  sliceAudioRecorder.start();
+  sliceTimer = setTimeout(() => {
+    if (sliceAudioRecorder.state === 'recording') {
+      sliceAudioRecorder.stop();
+    }
+  }, 5000);
+}
+
+async function processSlice(blob, relativeTimeMs) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const base64Data = arrayBufferToBase64(arrayBuffer);
+  
+  const tempId = 'interpret-temp-' + Date.now();
+  const seconds = Math.floor(relativeTimeMs / 1000) - 5;
+  const formatSec = seconds < 0 ? 0 : seconds;
+  const m = String(Math.floor(formatSec / 60)).padStart(2, '0');
+  const s = String(formatSec % 60).padStart(2, '0');
+  const timeStr = `${m}:${s}`;
+  
+  const tempBubble = document.createElement('div');
+  tempBubble.id = tempId;
+  tempBubble.style.padding = '8px 12px';
+  tempBubble.style.borderLeft = '3px solid var(--primary)';
+  tempBubble.style.background = 'rgba(255,255,255,0.02)';
+  tempBubble.style.borderRadius = '4px';
+  tempBubble.style.textAlign = 'left';
+  tempBubble.style.margin = '4px 0';
+  tempBubble.innerHTML = `<span style="font-size:0.75rem; color:var(--primary); font-weight:bold;">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> 正在翻译同传...</span>`;
+  interpretLogContainer.appendChild(tempBubble);
+  interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+  
+  const targetLang = selectInterpretLang.value;
+  try {
+    const res = await window.api.interpretAudioSlice(base64Data, targetLang);
+    const tempElement = document.getElementById(tempId);
+    if (res.success) {
+      const textResult = res.text.trim();
+      const parts = textResult.split('|||');
+      const original = parts[0]?.trim() || '（无语音或未能识别）';
+      const translation = parts[1]?.trim() || '（翻译未生成）';
+      
+      interpretationHistory.push({ time: timeStr, original, translation });
+      
+      if (tempElement) {
+        tempElement.style.padding = '12px';
+        tempElement.style.borderLeft = '3px solid var(--primary)';
+        tempElement.style.background = 'rgba(255,255,255,0.03)';
+        tempElement.style.borderRadius = '6px';
+        tempElement.style.margin = '4px 0';
+        tempElement.innerHTML = `
+          <div style="font-size:0.75rem; color:var(--primary); font-weight:bold; margin-bottom:4px;">[${timeStr}]</div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <p style="font-size:0.85rem; color:var(--text-main); margin:0;">${original}</p>
+            <p style="font-size:0.85rem; color:var(--success); font-weight:500; margin:0;">${translation}</p>
+          </div>
+        `;
+      }
+      btnSaveInterpret.disabled = false;
+    } else {
+      if (tempElement) {
+        tempElement.innerHTML = `<span style="font-size:0.75rem; color:var(--danger);">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--danger);">同传服务错误: ${res.error}</span>`;
+      }
+    }
+  } catch (err) {
+    const tempElement = document.getElementById(tempId);
+    if (tempElement) {
+      tempElement.innerHTML = `<span style="font-size:0.75rem; color:var(--danger);">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--danger);">网络连接异常</span>`;
+    }
+  }
+  interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+}
+
+let localRecordings = [];
+
+async function loadRecordingsList() {
+  try {
+    const res = await window.api.listRecordFiles();
+    if (res.success) {
+      localRecordings = res.files;
+      renderRecordingsListUI();
+    } else {
+      showToast('获取录音列表失败: ' + res.error, true);
+    }
+  } catch (err) {
+    showToast('加载录音列表出错: ' + err, true);
+  }
+}
+
+function renderRecordingsListUI() {
+  if (recordingsCountBadge) {
+    recordingsCountBadge.textContent = localRecordings.length;
+    recordingsCountBadge.style.display = localRecordings.length > 0 ? 'inline-block' : 'none';
+  }
+
+  if (localRecordings.length === 0) {
+    recordingsContainer.innerHTML = `
+      <div style="padding: 24px 16px; color: var(--text-muted); text-align: center; font-size: 0.85rem; line-height: 1.5;">
+        <i class="fa-solid fa-microphone-slash" style="font-size: 2rem; margin-bottom: 8px; opacity: 0.3;"></i>
+        <p>Record 目录中暂无音频</p>
+      </div>
+    `;
+    return;
+  }
+
+  recordingsContainer.innerHTML = localRecordings.map((file, index) => {
+    return `
+      <div class="playlist-item" style="padding: 10px 12px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+        <div class="playlist-item-left" style="display:flex; align-items:center; gap:8px; overflow: hidden; flex: 1; margin-right: 8px;">
+          <i class="fa-solid fa-microphone" style="color: var(--primary);"></i>
+          <span class="playlist-item-title text-ellipsis" title="${file.name}" style="font-size:0.85rem; color: var(--text-main); font-weight: 500;">${file.name}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-shrink: 0;">
+          <span style="font-size:0.75rem; color:var(--text-muted);">${formatSize(file.size)}</span>
+          <button class="card-btn" onclick="playRecordFile('${file.name.replace(/'/g, "\\'")}', '${file.fullPath.replace(/\\/g, '\\\\')}')" title="播放" style="padding:6px 10px; border-radius: 6px;"><i class="fa-solid fa-play" style="font-size:0.75rem;"></i></button>
+          <button class="card-btn btn-delete" onclick="deleteRecordFile('${file.name.replace(/'/g, "\\'")}', '${file.fullPath.replace(/\\/g, '\\\\')}')" title="删除" style="padding:6px 10px; border-radius: 6px;"><i class="fa-solid fa-trash" style="font-size:0.75rem;"></i></button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.playRecordFile = (name, fullPath) => {
+  window.playAudioFromFile(name, fullPath);
+};
+
+window.deleteRecordFile = async (name, fullPath) => {
+  const confirmDel = confirm(`您确定要彻底删除录音文件 "${name}" 吗？`);
+  if (!confirmDel) return;
+  try {
+    const res = await window.api.deleteItem(fullPath);
+    if (res.success) {
+      showToast('录音删除成功！');
+      loadRecordingsList();
+    } else {
+      showToast('删除失败: ' + res.error, true);
+    }
+  } catch (err) {
+    showToast('删除异常: ' + err, true);
+  }
+};
+
+// Event Listeners
+btnRecordStart.addEventListener('click', startRecording);
+btnRecordStop.addEventListener('click', stopRecording);
+
+btnSaveInterpret.addEventListener('click', async () => {
+  if (interpretationHistory.length === 0) return;
+  
+  const defaultTitle = `Interpret_${formatDateForFile(new Date())}`;
+  const noteTitle = prompt('请输入导出便签的名称：', defaultTitle);
+  if (!noteTitle) return;
+  
+  let mdContent = `# 同声传译转录文档 (${selectInterpretLang.value === 'zh-to-en' ? '中译英' : '英译中'})\n`;
+  mdContent += `* 导出时间：${new Date().toLocaleString()}\n\n`;
+  mdContent += `| 时间轴 | 发言原文 | 翻译对齐 |\n`;
+  mdContent += `| :--- | :--- | :--- |\n`;
+  
+  interpretationHistory.forEach(item => {
+    mdContent += `| ${item.time} | ${item.original.replace(/\|/g, '\\|')} | ${item.translation.replace(/\|/g, '\\|')} |\n`;
+  });
+  
+  try {
+    const filename = noteTitle + '.md';
+    const res = await window.api.saveNote(filename, mdContent);
+    if (res.success) {
+      showToast(`已成功导出至便签：${filename}`);
+    } else {
+      showToast('导出便签失败: ' + res.error, true);
+    }
+  } catch (err) {
+    showToast('导出异常: ' + err, true);
+  }
+});
+
+// Helper utilities
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
+function formatDateForFile(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${y}${m}${d}_${hh}${mm}${ss}`;
 }

@@ -548,4 +548,117 @@ ipcMain.handle('batch-delete', async (event, targetFullPaths) => {
   }
 });
 
+// IPC Handler: 保存录音文件
+ipcMain.handle('save-record-file', async (event, filename, buffer) => {
+  try {
+    const recordDir = path.join(currentConfig.rootPath, 'Record');
+    if (!fs.existsSync(recordDir)) {
+      fs.mkdirSync(recordDir, { recursive: true });
+    }
+    const filePath = path.join(recordDir, filename);
+    fs.writeFileSync(filePath, Buffer.from(buffer));
+    return { success: true, filePath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler: 读取录音文件列表
+ipcMain.handle('list-record-files', async () => {
+  try {
+    const recordDir = path.join(currentConfig.rootPath, 'Record');
+    if (!fs.existsSync(recordDir)) {
+      return { success: true, files: [] };
+    }
+    const items = fs.readdirSync(recordDir, { withFileTypes: true });
+    const files = [];
+    for (const item of items) {
+      if (item.isFile()) {
+        const ext = path.extname(item.name).toLowerCase();
+        if (['.webm', '.wav', '.mp3', '.ogg', '.m4a'].includes(ext)) {
+          const fullPath = path.join(recordDir, item.name);
+          const stats = fs.statSync(fullPath);
+          files.push({
+            name: item.name,
+            fullPath: fullPath,
+            size: stats.size,
+            mtime: stats.mtime.toLocaleString()
+          });
+        }
+      }
+    }
+    files.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
+    return { success: true, files };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler: 实时同声传译音频片段
+ipcMain.handle('interpret-audio-slice', async (event, base64Data, targetLang) => {
+  try {
+    if (!currentConfig.apiKey) {
+      return { success: false, error: '未配置 API Key，请前往设置配置。' };
+    }
+    if (currentConfig.apiType === 'gemini') {
+      const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
+      const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
+      const url = `${baseUrl}/v1beta/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
+      
+      const promptText = `You are a professional simultaneous interpreter for Model United Nations debates.
+Please interpret the spoken audio chunk.
+If targetLang is 'zh-to-en', translate Chinese speech into English.
+If targetLang is 'en-to-zh', translate English speech into Chinese.
+Please first transcribe the original spoken speech in its original language, and then translate it.
+Format your output strictly as:
+[Original Transcription] ||| [Translation]
+
+Example 1:
+大家好，我是联合国代表。 ||| Hello everyone, I am the delegate of the United Nations.
+
+Example 2:
+We must address this issue immediately. ||| 我们必须立刻解决这个问题。
+
+The current translation configuration is: ${targetLang === 'zh-to-en' ? 'Chinese to English' : 'English to Chinese'}.
+Directly output the result in the above format, do not include any markdown bolding, prefixes, explanations, or headings.`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'audio/webm',
+                  data: base64Data
+                }
+              },
+              {
+                text: promptText
+              }
+            ]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return { success: false, error: `API 错误 (HTTP ${response.status}): ${errText}` };
+      }
+
+      const json = await response.json();
+      const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        return { success: false, error: 'API 返回内容为空' };
+      }
+      return { success: true, text };
+    } else {
+      return { success: false, error: '同传实时录音暂仅支持 Gemini API 系列模型，请配置 API 类别为 Gemini。' };
+    }
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 
