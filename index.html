@@ -27,6 +27,9 @@
         <button class="nav-item" id="nav-audio-btn" data-tab="audio-view">
           <i class="fa-solid fa-music"></i> 音频播放器
         </button>
+        <button class="nav-item" id="nav-notes-btn" data-tab="notes-view">
+          <i class="fa-solid fa-note-sticky"></i> 快捷便签
+        </button>
       </div>
 
       <div class="sidebar-section">
@@ -191,6 +194,55 @@
                   <i class="fa-solid fa-wand-magic-sparkles"></i> 一键转录当前音频
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Notes View -->
+      <section id="notes-view" class="view-panel">
+        <header>
+          <h1>快捷便签</h1>
+          <p>在当前工作区的 Notes 目录下实时编写和渲染 Markdown 备赛便签</p>
+        </header>
+
+        <div class="notes-container">
+          <!-- Left Column: Notes List -->
+          <div class="notes-sidebar">
+            <button class="action-btn success" id="btn-new-note" style="width: 100%; justify-content: center; margin-bottom: 16px; font-weight: 600; padding: 12px 16px;">
+              <i class="fa-solid fa-plus"></i> 新建便签
+            </button>
+            <div class="notes-list" id="notes-list-container">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+
+          <!-- Right Column: Note Editor / Previewer -->
+          <div class="note-content-area">
+            <div class="note-editor-header">
+              <input type="text" id="note-title-input" placeholder="便签标题 (例如: 备赛注意事项)" readonly>
+              <div class="note-actions">
+                <button class="action-btn" id="btn-edit-note" title="编辑便签" style="display: none;"><i class="fa-solid fa-pen"></i> 编辑</button>
+                <button class="action-btn success" id="btn-save-note" title="保存并预览" style="display: none;"><i class="fa-solid fa-floppy-disk"></i> 保存并预览</button>
+                <button class="action-btn danger" id="btn-delete-note" title="删除便签" style="display: none;"><i class="fa-solid fa-trash"></i></button>
+              </div>
+            </div>
+            
+            <div class="note-body-wrapper">
+              <!-- Preview Pane (Markdown rendered HTML) -->
+              <div class="note-preview-pane markdown-body" id="note-preview-pane">
+                <div class="notes-empty-state">
+                  <i class="fa-solid fa-note-sticky" style="font-size: 3.5rem; margin-bottom: 16px; opacity: 0.25;"></i>
+                  <p>请在左侧选择便签，或者新建一个便签</p>
+                </div>
+              </div>
+              
+              <!-- Edit Pane (Raw markdown text area) -->
+              <textarea id="note-edit-area" placeholder="在这里输入 Markdown 格式的便签内容...
+例如:
+# 我的备赛思路
+1. 第一步: 整理音频
+2. 第二步: 用 AI 听写转录" style="display: none;"></textarea>
             </div>
           </div>
         </div>

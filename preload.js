@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld('api', {
   getAllAudios: () => ipcRenderer.invoke('get-all-audios'),
   saveApiSettings: (settings) => ipcRenderer.invoke('save-api-settings', settings),
   transcribeAudio: (filePath) => ipcRenderer.invoke('transcribe-audio', filePath),
+  listNotes: () => ipcRenderer.invoke('list-notes'),
+  readNote: (noteName) => ipcRenderer.invoke('read-note', noteName),
+  saveNote: (noteName, content) => ipcRenderer.invoke('save-note', noteName, content),
+  deleteNote: (noteName) => ipcRenderer.invoke('delete-note', noteName),
   deleteItem: (targetFullPath) => ipcRenderer.invoke('delete-item', targetFullPath),
   openItem: (targetFullPath) => ipcRenderer.invoke('open-item', targetFullPath)
 });

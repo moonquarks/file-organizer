@@ -261,7 +261,7 @@ ipcMain.handle('get-all-audios', async () => {
           scan(fullPath);
         } else {
           const ext = path.extname(item.name).toLowerCase();
-          if (['.mp3', '.ogg', '.wav'].includes(ext)) {
+          if (['.mp3', '.ogg', '.wav', '.m4a', '.aac', '.flac'].includes(ext)) {
             audios.push({
               name: item.name,
               fullPath: fullPath,
@@ -414,4 +414,82 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
     return { success: false, error: err.message };
   }
 });
+
+// IPC Handler: 获取或初始化 Notes 文件夹和便签列表
+ipcMain.handle('list-notes', async () => {
+  try {
+    const notesDir = path.join(currentConfig.rootPath, 'Notes');
+    if (!fs.existsSync(notesDir)) {
+      fs.mkdirSync(notesDir, { recursive: true });
+    }
+    
+    const items = fs.readdirSync(notesDir, { withFileTypes: true });
+    const notes = [];
+    for (const item of items) {
+      if (item.isFile() && item.name.toLowerCase().endsWith('.md')) {
+        const fullPath = path.join(notesDir, item.name);
+        const stats = fs.statSync(fullPath);
+        notes.push({
+          name: item.name,
+          fullPath: fullPath,
+          mtime: stats.mtime.toLocaleString()
+        });
+      }
+    }
+    // 按修改时间倒序排列
+    notes.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
+    return { success: true, notes, notesDir };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler: 读取便签内容
+ipcMain.handle('read-note', async (event, noteName) => {
+  try {
+    const notePath = path.join(currentConfig.rootPath, 'Notes', noteName);
+    if (!fs.existsSync(notePath)) {
+      return { success: false, error: '便签文件不存在' };
+    }
+    const content = fs.readFileSync(notePath, 'utf8');
+    return { success: true, content };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler: 保存便签内容
+ipcMain.handle('save-note', async (event, noteName, content) => {
+  try {
+    const notesDir = path.join(currentConfig.rootPath, 'Notes');
+    if (!fs.existsSync(notesDir)) {
+      fs.mkdirSync(notesDir, { recursive: true });
+    }
+    
+    let safeName = noteName;
+    if (!safeName.toLowerCase().endsWith('.md')) {
+      safeName += '.md';
+    }
+    
+    const notePath = path.join(notesDir, safeName);
+    fs.writeFileSync(notePath, content, 'utf8');
+    return { success: true, noteName: safeName };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler: 删除便签
+ipcMain.handle('delete-note', async (event, noteName) => {
+  try {
+    const notePath = path.join(currentConfig.rootPath, 'Notes', noteName);
+    if (fs.existsSync(notePath)) {
+      fs.unlinkSync(notePath);
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 

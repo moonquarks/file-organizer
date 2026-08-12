@@ -69,6 +69,18 @@ const inputApiModel = document.getElementById('input-api-model');
 const btnSaveApiSettings = document.getElementById('btn-save-api-settings');
 const apiSettingsError = document.getElementById('api-settings-error');
 
+// Notes Elements
+const notesView = document.getElementById('notes-view');
+const navNotesBtn = document.getElementById('nav-notes-btn');
+const notesListContainer = document.getElementById('notes-list-container');
+const btnNewNote = document.getElementById('btn-new-note');
+const noteTitleInput = document.getElementById('note-title-input');
+const btnEditNote = document.getElementById('btn-edit-note');
+const btnSaveNote = document.getElementById('btn-save-note');
+const btnDeleteNote = document.getElementById('btn-delete-note');
+const notePreviewPane = document.getElementById('note-preview-pane');
+const noteEditArea = document.getElementById('note-edit-area');
+
 // --- 通用/视图切换功能 ---
 function showToast(message, isError = false) {
   toast.textContent = message;
@@ -92,6 +104,10 @@ function switchView(viewName) {
     audioView.classList.add('active');
     navAudioBtn.classList.add('active');
     loadAudioPlaylist();
+  } else if (viewName === 'notes') {
+    notesView.classList.add('active');
+    navNotesBtn.classList.add('active');
+    loadNotesList();
   }
 }
 
@@ -527,6 +543,11 @@ navAudioBtn.addEventListener('click', () => {
   switchView('audio');
 });
 
+// navNotesBtn 点击事件
+navNotesBtn.addEventListener('click', () => {
+  switchView('notes');
+});
+
 // --- 音频播放器逻辑 ---
 let audioPlaylist = [];
 let audioCurrentIndex = -1;
@@ -634,6 +655,7 @@ async function loadAudioPlaylist() {
     if (res.success) {
       audioPlaylist = res.audios;
       renderPlaylistUI();
+      showToast(`音频扫描完成，共找到 ${audioPlaylist.length} 个音频文件`);
     } else {
       showToast('获取播放列表失败: ' + res.error, true);
     }
@@ -789,4 +811,267 @@ playerProgress.addEventListener('input', (e) => {
 // --- 初始化启动 ---
 document.addEventListener('DOMContentLoaded', () => {
   loadConfigAndScan();
+});
+
+
+// --- 快捷便签逻辑 ---
+let notesList = [];
+let currentNoteName = '';
+let isEditingNote = false;
+
+// 简易 Markdown 渲染引擎
+function renderMarkdown(md) {
+  if (!md) return '';
+  
+  // 转义 HTML 特殊字符防止 XSS 攻击
+  let html = md
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  
+  // 渲染标题 (h1, h2, h3)
+  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+  
+  // 渲染加粗与斜体
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  
+  // 渲染引用块
+  html = html.replace(/^\>\s+(.*$)/gim, '<blockquote>$1</blockquote>');
+  
+  // 渲染无序列表与有序列表
+  html = html.replace(/^\s*-\s+(.*$)/gim, '<ul><li>$1</li></ul>');
+  html = html.replace(/^\s*\*\s+(.*$)/gim, '<ul><li>$1</li></ul>');
+  html = html.replace(/^\s*\d+\.\s+(.*$)/gim, '<ol><li>$1</li></ol>');
+  
+  // 修复连结列表的 ul/ol 闭合标签
+  html = html.replace(/<\/ul>\s*<ul>/g, '');
+  html = html.replace(/<\/ol>\s*<ol>/g, '');
+  
+  // 渲染代码块
+  html = html.replace(/\`\`\`([\s\S]*?)\`\`\`/g, '<pre><code>$1</code></pre>');
+  html = html.replace(/\`(.*?)\`/g, '<code>$1</code>');
+  
+  // 渲染换行段落
+  html = html.replace(/\n$/gim, '<br>');
+  html = html.split('\n').map(line => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('<') && trimmed) {
+      return `<p>${line}</p>`;
+    }
+    return line;
+  }).join('\n');
+  
+  return html;
+}
+
+// 加载便签列表
+async function loadNotesList() {
+  try {
+    const res = await window.api.listNotes();
+    if (res.success) {
+      notesList = res.notes;
+      renderNotesListUI();
+    } else {
+      showToast('获取便签列表失败: ' + res.error, true);
+    }
+  } catch (err) {
+    showToast('加载便签列表异常: ' + err, true);
+  }
+}
+
+// 渲染左侧便签列表 UI
+function renderNotesListUI() {
+  if (notesList.length === 0) {
+    notesListContainer.innerHTML = `<p style="padding: 12px; color: var(--text-muted); text-align: center; font-size: 0.85rem;">Notes 目录暂无便签，点击上方按钮新建一个吧！</p>`;
+    return;
+  }
+  
+  notesListContainer.innerHTML = notesList.map(note => {
+    const isActive = note.name === currentNoteName;
+    // 移除 .md 后缀展示
+    const displayName = note.name.slice(0, -3);
+    return `
+      <div class="note-item ${isActive ? 'active' : ''}" onclick="selectNote('${note.name.replace(/'/g, "\\'")}')">
+        <span class="note-item-title">${displayName}</span>
+        <span class="note-item-time">${note.mtime.split(' ')[0]}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// 选择并读取某个便签
+window.selectNote = async function(noteName) {
+  currentNoteName = noteName;
+  isEditingNote = false;
+  
+  noteTitleInput.value = noteName.slice(0, -3); // 移除 .md 后缀
+  noteTitleInput.readOnly = true;
+  
+  // 切换按钮状态
+  btnEditNote.style.display = 'inline-flex';
+  btnDeleteNote.style.display = 'inline-flex';
+  btnSaveNote.style.display = 'none';
+  
+  // 切换面板展示
+  notePreviewPane.style.display = 'block';
+  noteEditArea.style.display = 'none';
+  
+  renderNotesListUI();
+  
+  notePreviewPane.innerHTML = `
+    <div class="notes-empty-state">
+      <i class="fa-solid fa-spinner fa-spin" style="font-size: 2.5rem; margin-bottom: 12px; color: var(--primary);"></i>
+      <p>正在读取便签内容...</p>
+    </div>
+  `;
+  
+  try {
+    const res = await window.api.readNote(noteName);
+    if (res.success) {
+      noteEditArea.value = res.content;
+      notePreviewPane.innerHTML = renderMarkdown(res.content) || `<p style="color: var(--text-muted); font-style: italic;">便签内容为空</p>`;
+    } else {
+      showToast('读取便签失败: ' + res.error, true);
+    }
+  } catch (err) {
+    showToast('读取异常: ' + err, true);
+  }
+};
+
+// 进入编辑模式
+btnEditNote.addEventListener('click', () => {
+  if (!currentNoteName) return;
+  
+  isEditingNote = true;
+  noteTitleInput.readOnly = false; // 允许修改便签标题
+  
+  // 隐藏预览，显示编辑框
+  notePreviewPane.style.display = 'none';
+  noteEditArea.style.display = 'block';
+  
+  btnEditNote.style.display = 'none';
+  btnSaveNote.style.display = 'inline-flex';
+  
+  noteEditArea.focus();
+});
+
+// 保存并渲染便签
+btnSaveNote.addEventListener('click', async () => {
+  let title = noteTitleInput.value.trim();
+  const content = noteEditArea.value;
+  
+  if (!title) {
+    showToast('便签标题不能为空！', true);
+    return;
+  }
+  
+  // 过滤掉文件名不支持的字符
+  title = title.replace(/[\\/:*?"<>|]/g, '');
+  
+  btnSaveNote.disabled = true;
+  try {
+    // 如果标题改变了（且不是新建的第一次命名），则需要删除旧的便签文件
+    const newFileName = title + '.md';
+    const isRename = currentNoteName && currentNoteName !== newFileName;
+    
+    const res = await window.api.saveNote(newFileName, content);
+    if (res.success) {
+      showToast('便签已成功保存！');
+      
+      if (isRename) {
+        await window.api.deleteNote(currentNoteName);
+      }
+      
+      currentNoteName = res.noteName;
+      isEditingNote = false;
+      
+      // 切回预览模式
+      noteTitleInput.readOnly = true;
+      notePreviewPane.innerHTML = renderMarkdown(content) || `<p style="color: var(--text-muted); font-style: italic;">便签内容为空</p>`;
+      notePreviewPane.style.display = 'block';
+      noteEditArea.style.display = 'none';
+      
+      btnEditNote.style.display = 'inline-flex';
+      btnSaveNote.style.display = 'none';
+      
+      await loadNotesList();
+    } else {
+      showToast('保存失败: ' + res.error, true);
+    }
+  } catch (err) {
+    showToast('保存异常: ' + err, true);
+  } finally {
+    btnSaveNote.disabled = false;
+  }
+});
+
+// 删除便签
+btnDeleteNote.addEventListener('click', async () => {
+  if (!currentNoteName) return;
+  
+  const displayName = currentNoteName.slice(0, -3);
+  const confirmDelete = confirm(`确认要彻底删除便签 "${displayName}" 吗？`);
+  if (!confirmDelete) return;
+  
+  try {
+    const res = await window.api.deleteNote(currentNoteName);
+    if (res.success) {
+      showToast('便签已删除');
+      currentNoteName = '';
+      noteTitleInput.value = '';
+      noteTitleInput.readOnly = true;
+      noteEditArea.value = '';
+      
+      // 恢复空状态
+      notePreviewPane.innerHTML = `
+        <div class="notes-empty-state">
+          <i class="fa-solid fa-note-sticky" style="font-size: 3.5rem; margin-bottom: 16px; opacity: 0.25;"></i>
+          <p>请在左侧选择便签，或者新建一个便签</p>
+        </div>
+      `;
+      
+      btnEditNote.style.display = 'none';
+      btnSaveNote.style.display = 'none';
+      btnDeleteNote.style.display = 'none';
+      
+      await loadNotesList();
+    } else {
+      showToast('删除失败: ' + res.error, true);
+    }
+  } catch (err) {
+    showToast('删除异常: ' + err, true);
+  }
+});
+
+// 新建便签
+btnNewNote.addEventListener('click', () => {
+  // 默认名：新建便签.md。检测重名
+  let defaultTitle = '新建便签';
+  let count = 1;
+  let newFileName = defaultTitle + '.md';
+  
+  while (notesList.some(n => n.name.toLowerCase() === newFileName.toLowerCase())) {
+    newFileName = `${defaultTitle} (${count}).md`;
+    count++;
+  }
+  
+  currentNoteName = newFileName;
+  isEditingNote = true;
+  
+  noteTitleInput.value = currentNoteName.slice(0, -3);
+  noteTitleInput.readOnly = false; // 新建的直接可编辑标题
+  noteEditArea.value = '';
+  
+  // 切到编辑状态
+  notePreviewPane.style.display = 'none';
+  noteEditArea.style.display = 'block';
+  
+  btnEditNote.style.display = 'none';
+  btnSaveNote.style.display = 'inline-flex';
+  btnDeleteNote.style.display = 'inline-flex';
+  
+  noteEditArea.focus();
 });
