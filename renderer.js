@@ -1038,8 +1038,8 @@ function renderMarkdown(md) {
   html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
   html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
 
-  // 4. 渲染引用块
-  html = html.replace(/^\>\s+(.*$)/gim, '<blockquote>$1</blockquote>');
+  // 4. 渲染引用块 (由于首步将 > 转义为 &gt;，此处须匹配 &gt;)
+  html = html.replace(/^&gt;\s+(.*$)/gim, '<blockquote>$1</blockquote>');
 
   // 5. 渲染删除线 ~~text~~
   html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
