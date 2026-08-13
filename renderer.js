@@ -118,6 +118,15 @@ const checkboxApiStream = document.getElementById('checkbox-api-stream');
 const btnSaveApiSettings = document.getElementById('btn-save-api-settings');
 const apiSettingsError = document.getElementById('api-settings-error');
 
+// 文本翻译 API 声明
+const selectTransApiType = document.getElementById('select-trans-api-type');
+const inputTransApiKey = document.getElementById('input-trans-api-key');
+const inputTransApiUrl = document.getElementById('input-trans-api-url');
+const inputTransApiModel = document.getElementById('input-trans-api-model');
+const checkboxTransApiStream = document.getElementById('checkbox-trans-api-stream');
+const btnSaveTransApiSettings = document.getElementById('btn-save-trans-api-settings');
+const transApiSettingsError = document.getElementById('trans-api-settings-error');
+
 // 音频硬件设备选择 DOM 声明
 const selectAudioInput = document.getElementById('select-audio-input');
 const selectAudioOutput = document.getElementById('select-audio-output');
@@ -233,12 +242,20 @@ async function loadConfigAndScan() {
       rootPathDisplay.textContent = currentWorkspaceConfig.rootPath;
       inputRootPath.value = currentWorkspaceConfig.rootPath;
       
-      // 加载 API 接口配置
+      // 加载 API 接口配置 (同传/音频)
       selectApiType.value = currentWorkspaceConfig.apiType || 'gemini';
       inputApiKey.value = currentWorkspaceConfig.apiKey || '';
       inputApiUrl.value = currentWorkspaceConfig.apiBaseUrl || '';
       inputApiModel.value = currentWorkspaceConfig.apiModel || '';
       checkboxApiStream.checked = currentWorkspaceConfig.apiStream !== false; // 默认启用
+      
+      // 加载文本翻译 API 配置
+      selectTransApiType.value = currentWorkspaceConfig.transApiType || 'gemini';
+      inputTransApiKey.value = currentWorkspaceConfig.transApiKey || '';
+      inputTransApiUrl.value = currentWorkspaceConfig.transApiBaseUrl || '';
+      inputTransApiModel.value = currentWorkspaceConfig.transApiModel || '';
+      checkboxTransApiStream.checked = currentWorkspaceConfig.transApiStream !== false; // 默认启用
+      
       updateTranscribeApiStatusUI();
       
       // 加载侧边栏快速通道
@@ -737,6 +754,36 @@ btnSaveApiSettings.addEventListener('click', async () => {
     apiSettingsError.textContent = '保存配置失败: ' + err;
   } finally {
     btnSaveApiSettings.disabled = false;
+  }
+});
+
+// 保存文本翻译 API 配置
+btnSaveTransApiSettings.addEventListener('click', async () => {
+  const transApiType = selectTransApiType.value;
+  const transApiKey = inputTransApiKey.value.trim();
+  const transApiBaseUrl = inputTransApiUrl.value.trim();
+  const transApiModel = inputTransApiModel.value.trim();
+  const transApiStream = checkboxTransApiStream.checked;
+
+  if (!transApiKey) {
+    transApiSettingsError.textContent = 'API Key 不能为空';
+    return;
+  }
+
+  btnSaveTransApiSettings.disabled = true;
+  transApiSettingsError.textContent = '';
+  try {
+    const res = await window.api.saveTransApiSettings({ transApiType, transApiKey, transApiBaseUrl, transApiModel, transApiStream });
+    if (res.success) {
+      showToast('文本翻译 API 配置保存成功！');
+      currentWorkspaceConfig = res.config;
+    } else {
+      transApiSettingsError.textContent = res.error;
+    }
+  } catch (err) {
+    transApiSettingsError.textContent = '保存配置失败: ' + err;
+  } finally {
+    btnSaveTransApiSettings.disabled = false;
   }
 });
 
@@ -2092,7 +2139,7 @@ btnTextTranslate.addEventListener('click', async () => {
   btnTextTranslate.disabled = true;
   btnTextTranslate.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在翻译...';
   
-  const isStream = currentWorkspaceConfig.apiStream !== false;
+  const isStream = currentWorkspaceConfig.transApiStream !== false;
   if (isStream) {
     accumulatedTranslationText = '';
     divTranslateResult.innerHTML = '<span class="typing-cursor"></span>';

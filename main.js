@@ -23,7 +23,14 @@ let currentConfig = {
   apiType: 'gemini',
   apiKey: '',
   apiBaseUrl: '',
-  apiModel: ''
+  apiModel: '',
+  apiStream: true,
+  // 文本翻译独立配置
+  transApiType: 'gemini',
+  transApiKey: '',
+  transApiBaseUrl: '',
+  transApiModel: '',
+  transApiStream: true
 };
 
 function initConfig() {
@@ -444,6 +451,17 @@ ipcMain.handle('save-api-settings', (event, { apiType, apiKey, apiBaseUrl, apiMo
   currentConfig.apiBaseUrl = apiBaseUrl;
   currentConfig.apiModel = apiModel;
   currentConfig.apiStream = apiStream;
+  saveConfig();
+  return { success: true, config: currentConfig };
+});
+
+// IPC Handler: 保存翻译 API 配置
+ipcMain.handle('save-trans-api-settings', (event, { transApiType, transApiKey, transApiBaseUrl, transApiModel, transApiStream }) => {
+  currentConfig.transApiType = transApiType;
+  currentConfig.transApiKey = transApiKey;
+  currentConfig.transApiBaseUrl = transApiBaseUrl;
+  currentConfig.transApiModel = transApiModel;
+  currentConfig.transApiStream = transApiStream;
   saveConfig();
   return { success: true, config: currentConfig };
 });
@@ -1086,14 +1104,14 @@ Directly output the result in the above format, do not include any markdown bold
 // IPC Handler: 纯文本翻译功能
 ipcMain.handle('translate-text', async (event, text, targetLang) => {
   try {
-    if (!currentConfig.apiKey) {
-      return { success: false, error: '未配置 API Key，请前往“工作区路径”设置。' };
+    if (!currentConfig.transApiKey) {
+      return { success: false, error: '未配置翻译 API Key，请前往设置面板中“文本翻译 API 配置”。' };
     }
     
-    const isDeepSeek = currentConfig.apiType === 'deepseek';
-    const isGemini = currentConfig.apiType === 'gemini';
-    const isWhisper = currentConfig.apiType === 'openai-whisper';
-    const isStream = currentConfig.apiStream !== false;
+    const isDeepSeek = currentConfig.transApiType === 'deepseek';
+    const isGemini = currentConfig.transApiType === 'gemini';
+    const isOpenAI = currentConfig.transApiType === 'openai';
+    const isStream = currentConfig.transApiStream !== false;
     
     const promptText = `You are a professional translator.
 Please translate the following text into ${targetLang === 'to-en' ? 'English' : 'Chinese'}.
@@ -1104,10 +1122,10 @@ Text to translate:
 ${text}`;
 
     if (isGemini) {
-      const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
-      const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
+      const baseUrl = currentConfig.transApiBaseUrl || 'https://generativelanguage.googleapis.com';
+      const modelName = currentConfig.transApiModel || 'gemini-1.5-flash';
       const method = isStream ? 'streamGenerateContent' : 'generateContent';
-      const url = `${baseUrl}/v1/models/${modelName}:${method}?key=${currentConfig.apiKey}`;
+      const url = `${baseUrl}/v1/models/${modelName}:${method}?key=${currentConfig.transApiKey}`;
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时防卡死
@@ -1180,9 +1198,9 @@ ${text}`;
       }
       return { success: true, text: fullText.trim() };
 
-    } else if (isDeepSeek || isWhisper) {
-      const baseUrl = currentConfig.apiBaseUrl || (isDeepSeek ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
-      const modelName = currentConfig.apiModel || (isDeepSeek ? 'deepseek-chat' : 'gpt-4o-mini');
+    } else if (isDeepSeek || isOpenAI) {
+      const baseUrl = currentConfig.transApiBaseUrl || (isDeepSeek ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
+      const modelName = currentConfig.transApiModel || (isDeepSeek ? 'deepseek-chat' : 'gpt-4o-mini');
       
       let url = baseUrl;
       if (!url.endsWith('/v1') && !url.endsWith('/v1/')) {
@@ -1197,7 +1215,7 @@ ${text}`;
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentConfig.apiKey}`
+          'Authorization': `Bearer ${currentConfig.transApiKey}`
         },
         body: JSON.stringify({
           model: modelName,

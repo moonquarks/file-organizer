@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   renameItem: (itemFullPath, newName) => ipcRenderer.invoke('rename-item', itemFullPath, newName),
   getAllAudios: () => ipcRenderer.invoke('get-all-audios'),
   saveApiSettings: (settings) => ipcRenderer.invoke('save-api-settings', settings),
+  saveTransApiSettings: (settings) => ipcRenderer.invoke('save-trans-api-settings', settings),
   transcribeAudio: (filePath) => ipcRenderer.invoke('transcribe-audio', filePath),
   listNotes: () => ipcRenderer.invoke('list-notes'),
   readNote: (noteName) => ipcRenderer.invoke('read-note', noteName),

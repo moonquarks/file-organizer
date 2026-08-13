@@ -159,6 +159,39 @@
           </div>
 
           <div class="settings-card" style="margin-top: 24px;">
+            <h3>文本翻译 API 配置</h3>
+            <p class="description">专门配置用于纯文本即时翻译的 AI 接口（支持独立的 Gemini、DeepSeek 或 OpenAI 配置）。</p>
+            <div class="settings-form">
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">接口类型</label>
+                <select id="select-trans-api-type" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: var(--text-main); outline: none;">
+                  <option value="gemini">Gemini API (推荐 - 可免费申请 Key)</option>
+                  <option value="deepseek">DeepSeek API (推荐 - 极速高精文本翻译)</option>
+                  <option value="openai">OpenAI / 其他兼容接口</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">API Key (密钥)</label>
+                <input type="password" id="input-trans-api-key" placeholder="请输入你的 API Key" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
+              </div>
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">模型编号 (选填，默认: gemini-1.5-flash 或 deepseek-chat 或 gpt-4o-mini)</label>
+                <input type="text" id="input-trans-api-model" placeholder="例如: gemini-1.5-pro, deepseek-chat 或 gpt-4o" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
+              </div>
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">API 代理接口地址 (选填，为空则使用官方默认域名)</label>
+                <input type="text" id="input-trans-api-url" placeholder="例如: https://api.yourproxy.com" style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 16px; color: var(--text-main); outline: none;">
+              </div>
+              <div class="form-group" style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="checkbox-trans-api-stream" style="width: 16px; height: 16px; cursor: pointer;">
+                <label for="checkbox-trans-api-stream" style="font-size: 0.85rem; color: var(--text-main); cursor: pointer; user-select: none;">启用文本流式翻译 (打字机效果)</label>
+              </div>
+              <button class="action-btn primary" id="btn-save-trans-api-settings">保存翻译 API 配置</button>
+            </div>
+            <span class="error-msg" id="trans-api-settings-error"></span>
+          </div>
+
+          <div class="settings-card" style="margin-top: 24px;">
             <h3>音频硬件设备选择</h3>
             <p class="description">选择应用进行录音时的输入麦克风以及播放时的输出扬声器。</p>
             <div class="settings-form">
