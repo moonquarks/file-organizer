@@ -728,7 +728,7 @@ ipcMain.handle('save-record-file', async (event, filename, buffer) => {
           const rightChannel = new Int16Array(numSamples);
           
           // 1. 异步切片提取双声道数据 (0% ~ 20%)
-          const extractChunkSize = 500000;
+          const extractChunkSize = 100000;
           for (let i = 0; i < numSamples; i += extractChunkSize) {
             const end = Math.min(i + extractChunkSize, numSamples);
             for (let j = i; j < end; j++) {
@@ -747,7 +747,7 @@ ipcMain.handle('save-record-file', async (event, filename, buffer) => {
           
           // 2. 异步切片编码 MP3 帧 (20% ~ 98%)
           const sampleBlockSize = 1152;
-          const encodeYieldBlocks = 2000; // 每 2000 个 block 释放一次主线程
+          const encodeYieldBlocks = 50; // 每 50 个 block 释放一次主线程
           let blockCount = 0;
           
           for (let i = 0; i < numSamples; i += sampleBlockSize) {

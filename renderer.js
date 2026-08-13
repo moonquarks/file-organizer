@@ -16,6 +16,7 @@ let currentAudioPlaylistItem = null;
 let audioContext = null;
 let microphoneSource = null;
 let scriptProcessorNode = null;
+let audioWorkletNode = null; // 新增：AudioWorklet 异步录音工作线程节点
 let wavAudioChunks = [];
 let isRecording = false;
 let recordTimerInterval = null;
@@ -1577,22 +1578,61 @@ async function startRecording() {
     setupVisualizer(mediaStream, audioContext);
     
     microphoneSource = audioContext.createMediaStreamSource(mediaStream);
-    // 建立 4096 字节缓冲区，双输入、双输出声道
-    scriptProcessorNode = audioContext.createScriptProcessor(4096, 2, 2);
     
-    scriptProcessorNode.onaudioprocess = (e) => {
-      if (!isRecording) return;
-      const left = e.inputBuffer.getChannelData(0);
-      const right = e.inputBuffer.getChannelData(1);
-      // 深拷贝音频分片，避免对象回收导致的音频片段丢失
-      wavAudioChunks.push({
-        left: new Float32Array(left),
-        right: new Float32Array(right)
-      });
-    };
+    // 优先采用 AudioWorklet 进行后台线程音频采集，消除渲染主线程压力
+    let useWorklet = false;
+    if (audioContext.audioWorklet) {
+      try {
+        const workletCode = `
+          class RecorderProcessor extends AudioWorkletProcessor {
+            process(inputs, outputs, parameters) {
+              const input = inputs[0];
+              if (input && input.length > 0) {
+                const left = input[0];
+                const right = input[1] || input[0];
+                this.port.postMessage({
+                  left: new Float32Array(left),
+                  right: new Float32Array(right)
+                });
+              }
+              return true;
+            }
+          }
+          registerProcessor('recorder-processor', RecorderProcessor);
+        `;
+        const blob = new Blob([workletCode], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        await audioContext.audioWorklet.addModule(url);
+        
+        audioWorkletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
+        audioWorkletNode.port.onmessage = (e) => {
+          if (!isRecording) return;
+          wavAudioChunks.push(e.data);
+        };
+        
+        microphoneSource.connect(audioWorkletNode);
+        audioWorkletNode.connect(audioContext.destination);
+        useWorklet = true;
+      } catch (workletErr) {
+        console.warn('AudioWorklet 初始化失败，降级使用 ScriptProcessorNode:', workletErr);
+      }
+    }
     
-    microphoneSource.connect(scriptProcessorNode);
-    scriptProcessorNode.connect(audioContext.destination);
+    if (!useWorklet) {
+      // 降级使用 ScriptProcessorNode，将缓冲区设为最大的 16384，使触发频率下降 75%
+      scriptProcessorNode = audioContext.createScriptProcessor(16384, 2, 2);
+      scriptProcessorNode.onaudioprocess = (e) => {
+        if (!isRecording) return;
+        const left = e.inputBuffer.getChannelData(0);
+        const right = e.inputBuffer.getChannelData(1);
+        wavAudioChunks.push({
+          left: new Float32Array(left),
+          right: new Float32Array(right)
+        });
+      };
+      microphoneSource.connect(scriptProcessorNode);
+      scriptProcessorNode.connect(audioContext.destination);
+    }
     
     // 同声传译分片开启 (保持使用 WebM 格式传递给 AI，因为 Gemini API 支持 webm 且切片较小)
     if (checkboxEnableInterpret.checked) {
@@ -1632,6 +1672,11 @@ async function stopRecording() {
   recordStatusText.textContent = '录音已停止，文件正在保存...';
   
   // 断开 Web Audio 节点与监听
+  if (audioWorkletNode) {
+    audioWorkletNode.disconnect();
+    audioWorkletNode.port.onmessage = null;
+    audioWorkletNode = null;
+  }
   if (scriptProcessorNode) {
     scriptProcessorNode.disconnect();
     scriptProcessorNode.onaudioprocess = null;
