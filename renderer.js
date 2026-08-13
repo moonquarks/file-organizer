@@ -1,6 +1,25 @@
 let currentSubPath = ''; // 相对当前根路径的相对路径，'' 代表根目录
+let currentFolderFullPath = ''; // 当前工作区正在浏览文件夹的系统绝对路径
 let currentWorkspaceConfig = {};
 let currentPathData = { folders: [], files: [] };
+let selectedPaths = []; // 存放当前被选中的资源（复选框），格式为绝对路径的字符串数组
+let isEditingNote = false;
+let currentNoteName = '';
+let notesList = [];
+let sliceAudioChunks = [];
+let sliceAudioRecorder = null;
+let sliceAccumulatedTexts = {};
+let interpretationHistory = []; // 存放同声传译的历史段落
+let currentAudioPlaylistItem = null;
+
+// Recorder specific audio buffers
+let audioContext = null;
+let microphoneSource = null;
+let scriptProcessorNode = null;
+let wavAudioChunks = [];
+let isRecording = false;
+let recordTimerInterval = null;
+let sliceTimer = null;
 
 // DOM 元素
 const explorerView = document.getElementById('explorer-view');
@@ -17,13 +36,6 @@ const recordVisualizer = document.getElementById('record-visualizer');
 const btnRecordStart = document.getElementById('btn-record-start');
 const btnRecordStop = document.getElementById('btn-record-stop');
 const recordStatusText = document.getElementById('record-status-text');
-const recordingsContainer = document.getElementById('recordings-container');
-const recordingsCountBadge = document.getElementById('recordings-count-badge');
-const checkboxEnableInterpret = document.getElementById('checkbox-enable-interpret');
-const selectInterpretLang = document.getElementById('select-interpret-lang');
-const interpretLogContainer = document.getElementById('interpret-log-container');
-const interpretEmptyPlaceholder = document.getElementById('interpret-empty-placeholder');
-const btnSaveInterpret = document.getElementById('btn-save-interpret');
 
 // Text Translation Elements
 const tabInterpretBtn = document.getElementById('tab-interpret-btn');
@@ -44,6 +56,7 @@ const breadcrumbsContainer = document.getElementById('breadcrumbs-container');
 const btnBack = document.getElementById('btn-back');
 const searchInput = document.getElementById('search-input');
 const btnNewFolder = document.getElementById('btn-new-folder');
+const btnOpenCurrentDir = document.getElementById('btn-open-current-dir');
 
 // Settings page elements
 const inputRootPath = document.getElementById('input-root-path');
@@ -127,6 +140,16 @@ const batchSelectCount = document.getElementById('batch-select-count');
 const btnBatchMove = document.getElementById('btn-batch-move');
 const btnBatchDelete = document.getElementById('btn-batch-delete');
 const btnBatchClear = document.getElementById('btn-batch-clear');
+
+const recordingsContainer = document.getElementById('recordings-container');
+const recordingsCountBadge = document.getElementById('recordings-count-badge');
+const checkboxEnableInterpret = document.getElementById('checkbox-enable-interpret');
+const selectInterpretLang = document.getElementById('select-interpret-lang');
+const interpretLogContainer = document.getElementById('interpret-log-container');
+const interpretEmptyPlaceholder = document.getElementById('interpret-empty-placeholder');
+const btnSaveInterpret = document.getElementById('btn-save-interpret');
+
+// --- Declarations Block End ---
 
 // --- 通用/视图切换功能 ---
 function showToast(message, isError = false) {
@@ -305,6 +328,7 @@ async function navigateTo(subPath) {
     const res = await window.api.listDir(currentSubPath);
     if (res.success) {
       currentPathData = { folders: res.folders, files: res.files };
+      currentFolderFullPath = res.fullCurrentPath; // 缓存当前目录的绝对物理路径，用于“打开此文件夹”
       renderExplorerGrid();
       renderBreadcrumbs(res.currentPath);
       btnBack.disabled = currentSubPath === '';
@@ -499,6 +523,18 @@ window.deleteItem = async (fullPath) => {
     }
   }
 };
+
+// --- 打开此文件夹功能 ---
+btnOpenCurrentDir.addEventListener('click', async () => {
+  if (currentFolderFullPath) {
+    const res = await window.api.openItem(currentFolderFullPath);
+    if (!res.success) {
+      showToast('打开文件夹失败: ' + res.error, true);
+    }
+  } else {
+    showToast('无法解析当前目录物理路径', true);
+  }
+});
 
 // --- 新建文件夹功能 ---
 btnNewFolder.addEventListener('click', () => {
@@ -969,9 +1005,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // --- 快捷便签逻辑 ---
-let notesList = [];
-let currentNoteName = '';
-let isEditingNote = false;
 
 // 简易 Markdown 渲染引擎
 function renderMarkdown(md) {
@@ -1346,7 +1379,6 @@ btnNewNote.addEventListener('click', () => {
 
 
 // --- 多选及批量操作逻辑 ---
-let selectedPaths = [];
 let isBatchMoveOperation = false;
 
 window.toggleSelectItem = function(event, path) {
@@ -1445,18 +1477,10 @@ function triggerMermaidRender() {
 }
 
 // --- 录音与实时同传核心引擎 ---
-let isRecording = false;
 let recordStartTime = null;
-let recordTimerInterval = null;
 let mediaStream = null;
 let mainAudioRecorder = null;
 let mainRecordedChunks = [];
-
-// 同传分片变量
-let sliceAudioRecorder = null;
-let sliceAudioChunks = [];
-let sliceTimer = null;
-let interpretationHistory = []; // { time: string, original: string, translation: string }
 
 // 录音波形可视化
 let audioCtx = null;
@@ -1513,11 +1537,7 @@ function updateRecordTimer() {
   recordTimer.textContent = `${m}:${s}`;
 }
 
-// WAV 编码缓存与节点变量
-let wavAudioChunks = [];
-let audioContext = null;
-let scriptProcessorNode = null;
-let microphoneSource = null;
+
 
 async function startRecording() {
   try {
@@ -1698,8 +1718,6 @@ function startInterpretationSlices(stream) {
     }
   }, getSliceDurationMs());
 }
-
-const sliceAccumulatedTexts = {};
 
 window.api.onInterpretSliceChunk((data) => {
   const { taskId, chunk } = data;
