@@ -1719,10 +1719,19 @@ function startInterpretationSlices(stream) {
   }, getSliceDurationMs());
 }
 
+// --- 判定滚动条是否接近最底端（容差 100px） ---
+function isUserNearBottom() {
+  const threshold = 100; // 容差像素
+  return (interpretLogContainer.scrollHeight - interpretLogContainer.scrollTop - interpretLogContainer.clientHeight) < threshold;
+}
+
 window.api.onInterpretSliceChunk((data) => {
   const { taskId, chunk } = data;
   const tempElement = document.getElementById(taskId);
   if (tempElement) {
+    // 1. 在更新 DOM 导致高度增长之前，先判断当前是否在底部
+    const wasNearBottom = isUserNearBottom();
+
     if (!sliceAccumulatedTexts[taskId]) {
       sliceAccumulatedTexts[taskId] = '';
     }
@@ -1737,15 +1746,14 @@ window.api.onInterpretSliceChunk((data) => {
     let translationHtml = '';
     
     if (parts.length > 1) {
-      // 已经包含分割线，说明正在翻译或已经翻译完成
       originalHtml = original;
       translationHtml = translation ? `${translation}<span class="typing-cursor"></span>` : '<i class="fa-solid fa-spinner fa-spin"></i> 正在翻译...';
     } else {
-      // 尚未检测到分割线，说明仍在录音原文听写中
       originalHtml = original ? `${original}<span class="typing-cursor"></span>` : '<i class="fa-solid fa-spinner fa-spin"></i> 正在识别原文...';
       translationHtml = '<i class="fa-solid fa-spinner fa-spin"></i> 正在翻译...';
     }
     
+    // 2. 更新内容（scrollHeight 将会增高）
     tempElement.innerHTML = `
       <div style="font-size:0.75rem; color:var(--primary); font-weight:bold; margin-bottom:4px;">[${timeStr}]</div>
       <div style="display:flex; flex-direction:column; gap:4px;">
@@ -1753,18 +1761,13 @@ window.api.onInterpretSliceChunk((data) => {
         <p style="font-size:0.85rem; color:var(--success); font-weight:500; margin:0;">${translationHtml}</p>
       </div>
     `;
-    scrollInterpretToBottomIfNeeded();
+    
+    // 3. 仅当原先就在最底部时，才跟随置底
+    if (wasNearBottom) {
+      interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+    }
   }
 });
-
-// --- 滚动辅助函数：仅在用户处于最底端（或非常贴近底端）时，才触发自动滚动探底 ---
-function scrollInterpretToBottomIfNeeded() {
-  const threshold = 80; // 容差像素
-  const isNearBottom = interpretLogContainer.scrollHeight - interpretLogContainer.scrollTop - interpretLogContainer.clientHeight < threshold;
-  if (isNearBottom) {
-    interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
-  }
-}
 
 async function processSlice(blob, relativeTimeMs) {
   const arrayBuffer = await blob.arrayBuffer();
@@ -1778,6 +1781,9 @@ async function processSlice(blob, relativeTimeMs) {
   const s = String(formatSec % 60).padStart(2, '0');
   const timeStr = `${m}:${s}`;
   
+  // 1. 在插入临时气泡之前，先判断当前是否在底部
+  const wasNearBottomBeforeAppend = isUserNearBottom();
+
   const tempBubble = document.createElement('div');
   tempBubble.id = tempId;
   tempBubble.dataset.timeStr = timeStr; // 存放时间戳供流式渲染使用
@@ -1788,14 +1794,23 @@ async function processSlice(blob, relativeTimeMs) {
   tempBubble.style.textAlign = 'left';
   tempBubble.style.margin = '4px 0';
   tempBubble.innerHTML = `<span style="font-size:0.75rem; color:var(--primary); font-weight:bold;">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> 正在识别和翻译同传...</span>`;
+  
   interpretLogContainer.appendChild(tempBubble);
-  scrollInterpretToBottomIfNeeded();
+  
+  // 2. 插入完毕后根据原状态置底
+  if (wasNearBottomBeforeAppend) {
+    interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+  }
   
   const targetLang = selectInterpretLang.value;
   try {
     const recentHistory = interpretationHistory.slice(-2);
     const res = await window.api.interpretAudioSlice(base64Data, targetLang, recentHistory, tempId);
+    
+    // 3. 在将气泡更新为正式翻译结果前，记录是否在底部
+    const wasNearBottomBeforeUpdate = isUserNearBottom();
     const tempElement = document.getElementById(tempId);
+    
     if (res.success) {
       const textResult = res.text.trim();
       const parts = textResult.split('|||');
@@ -1824,13 +1839,21 @@ async function processSlice(blob, relativeTimeMs) {
         tempElement.innerHTML = `<span style="font-size:0.75rem; color:var(--danger);">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--danger);">同传服务错误: ${res.error}</span>`;
       }
     }
+    
+    // 4. 更新完成后根据原状态置底
+    if (wasNearBottomBeforeUpdate) {
+      interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+    }
   } catch (err) {
+    const wasNearBottomBeforeError = isUserNearBottom();
     const tempElement = document.getElementById(tempId);
     if (tempElement) {
       tempElement.innerHTML = `<span style="font-size:0.75rem; color:var(--danger);">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--danger);">网络连接异常: ${err.message}</span>`;
     }
+    if (wasNearBottomBeforeError) {
+      interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+    }
   }
-  scrollInterpretToBottomIfNeeded();
 }
 
 let localRecordings = [];
