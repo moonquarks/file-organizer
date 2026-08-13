@@ -77,6 +77,13 @@ function createWindow () {
     callback(false);
   });
   
+  let forceClose = false;
+  win.on('close', (e) => {
+    if (forceClose) return;
+    e.preventDefault();
+    win.webContents.send('app-close-request');
+  });
+
   // 窗口控制 IPC 通道监听
   ipcMain.on('window-minimize', () => {
     win.minimize();
@@ -89,7 +96,8 @@ function createWindow () {
     }
   });
   ipcMain.on('window-close', () => {
-    app.exit(0); // 强行杀死主进程和所有渲染进程，绝不留存后台残留
+    forceClose = true;
+    win.close();
   });
   
   win.once('ready-to-show', () => {
@@ -1062,6 +1070,7 @@ ipcMain.handle('translate-text', async (event, text, targetLang) => {
     const isDeepSeek = currentConfig.apiType === 'deepseek';
     const isGemini = currentConfig.apiType === 'gemini';
     const isWhisper = currentConfig.apiType === 'openai-whisper';
+    const isStream = currentConfig.apiStream !== false;
     
     const promptText = `You are a professional translator.
 Please translate the following text into ${targetLang === 'to-en' ? 'English' : 'Chinese'}.
@@ -1074,7 +1083,11 @@ ${text}`;
     if (isGemini) {
       const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
       const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
-      const url = `${baseUrl}/v1/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
+      const method = isStream ? 'streamGenerateContent' : 'generateContent';
+      const url = `${baseUrl}/v1/models/${modelName}:${method}?key=${currentConfig.apiKey}`;
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时防卡死
       
       const response = await fetch(url, {
         method: 'POST',
@@ -1085,20 +1098,65 @@ ${text}`;
               text: promptText
             }]
           }]
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errText = await response.text();
         return { success: false, error: `API 错误 (HTTP ${response.status}): ${errText}` };
       }
 
-      const json = await response.json();
-      const translatedText = json.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!translatedText) {
-        return { success: false, error: 'API 接口返回了空翻译结果。' };
+      if (!isStream) {
+        const json = await response.json();
+        const translatedText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!translatedText) {
+          return { success: false, error: 'API 接口返回了空翻译结果。' };
+        }
+        return { success: true, text: translatedText.trim() };
       }
-      return { success: true, text: translatedText.trim() };
+
+      // 流式解析
+      let buffer = '';
+      let fullText = '';
+      const decoder = new TextDecoder();
+      for await (const chunk of response.body) {
+        buffer += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
+        
+        if (buffer.startsWith('[')) {
+          buffer = buffer.slice(1);
+        }
+        
+        let braceCount = 0;
+        let startIdx = -1;
+        for (let i = 0; i < buffer.length; i++) {
+          if (buffer[i] === '{') {
+            if (braceCount === 0) startIdx = i;
+            braceCount++;
+          } else if (buffer[i] === '}') {
+            braceCount--;
+            if (braceCount === 0 && startIdx !== -1) {
+              const jsonStr = buffer.slice(startIdx, i + 1);
+              try {
+                const json = JSON.parse(jsonStr);
+                const chunkText = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                if (chunkText) {
+                  fullText += chunkText;
+                  event.sender.send('translate-text-chunk', { chunk: chunkText });
+                }
+              } catch (e) {
+                // 忽略非完整 JSON
+              }
+              buffer = buffer.slice(i + 1);
+              i = -1;
+              startIdx = -1;
+            }
+          }
+        }
+      }
+      return { success: true, text: fullText.trim() };
+
     } else if (isDeepSeek || isWhisper) {
       const baseUrl = currentConfig.apiBaseUrl || (isDeepSeek ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
       const modelName = currentConfig.apiModel || (isDeepSeek ? 'deepseek-chat' : 'gpt-4o-mini');
@@ -1109,6 +1167,9 @@ ${text}`;
       }
       url = `${url}/chat/completions`;
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时防卡死
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -1118,21 +1179,57 @@ ${text}`;
         body: JSON.stringify({
           model: modelName,
           messages: [{ role: 'user', content: promptText }],
-          temperature: 0.3
-        })
+          temperature: 0.3,
+          stream: isStream
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errText = await response.text();
         return { success: false, error: `API 错误 (HTTP ${response.status}): ${errText}` };
       }
 
-      const json = await response.json();
-      const translatedText = json.choices?.[0]?.message?.content;
-      if (!translatedText) {
-        return { success: false, error: 'API 接口返回了空翻译结果。' };
+      if (!isStream) {
+        const json = await response.json();
+        const translatedText = json.choices?.[0]?.message?.content;
+        if (!translatedText) {
+          return { success: false, error: 'API 接口返回了空翻译结果。' };
+        }
+        return { success: true, text: translatedText.trim() };
       }
-      return { success: true, text: translatedText.trim() };
+
+      // 流式解析
+      let sseBuffer = '';
+      let fullText = '';
+      const decoder = new TextDecoder();
+      for await (const chunk of response.body) {
+        const text = typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
+        sseBuffer += text;
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop();
+        
+        for (const line of lines) {
+          const cleanLine = line.trim();
+          if (cleanLine.startsWith('data: ')) {
+            const dataStr = cleanLine.slice(6);
+            if (dataStr === '[DONE]') continue;
+            try {
+              const json = JSON.parse(dataStr);
+              const chunkText = json.choices?.[0]?.delta?.content || '';
+              if (chunkText) {
+                fullText += chunkText;
+                event.sender.send('translate-text-chunk', { chunk: chunkText });
+              }
+            } catch (e) {
+              // 忽略
+            }
+          }
+        }
+      }
+      return { success: true, text: fullText.trim() };
+
     } else {
       return { success: false, error: '暂不支持的 API 类型' };
     }

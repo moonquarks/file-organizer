@@ -1735,9 +1735,18 @@ window.api.onInterpretSliceChunk((data) => {
         <p style="font-size:0.85rem; color:var(--success); font-weight:500; margin:0;">${translationHtml}</p>
       </div>
     `;
-    interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+    scrollInterpretToBottomIfNeeded();
   }
 });
+
+// --- 滚动辅助函数：仅在用户处于最底端（或非常贴近底端）时，才触发自动滚动探底 ---
+function scrollInterpretToBottomIfNeeded() {
+  const threshold = 80; // 容差像素
+  const isNearBottom = interpretLogContainer.scrollHeight - interpretLogContainer.scrollTop - interpretLogContainer.clientHeight < threshold;
+  if (isNearBottom) {
+    interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+  }
+}
 
 async function processSlice(blob, relativeTimeMs) {
   const arrayBuffer = await blob.arrayBuffer();
@@ -1762,7 +1771,7 @@ async function processSlice(blob, relativeTimeMs) {
   tempBubble.style.margin = '4px 0';
   tempBubble.innerHTML = `<span style="font-size:0.75rem; color:var(--primary); font-weight:bold;">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> 正在识别和翻译同传...</span>`;
   interpretLogContainer.appendChild(tempBubble);
-  interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+  scrollInterpretToBottomIfNeeded();
   
   const targetLang = selectInterpretLang.value;
   try {
@@ -1803,7 +1812,7 @@ async function processSlice(blob, relativeTimeMs) {
       tempElement.innerHTML = `<span style="font-size:0.75rem; color:var(--danger);">[${timeStr}]</span> <span style="font-size:0.85rem; color:var(--danger);">网络连接异常: ${err.message}</span>`;
     }
   }
-  interpretLogContainer.scrollTop = interpretLogContainer.scrollHeight;
+  scrollInterpretToBottomIfNeeded();
 }
 
 let localRecordings = [];
@@ -1975,7 +1984,15 @@ btnTextTranslate.addEventListener('click', async () => {
   
   btnTextTranslate.disabled = true;
   btnTextTranslate.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在翻译...';
-  divTranslateResult.innerHTML = '<span style="color: var(--text-muted); font-style: italic;"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 6px;"></i> API 正在分析翻译中...</span>';
+  
+  const isStream = currentWorkspaceConfig.apiStream !== false;
+  if (isStream) {
+    accumulatedTranslationText = '';
+    divTranslateResult.innerHTML = '<span class="typing-cursor"></span>';
+  } else {
+    divTranslateResult.innerHTML = '<span style="color: var(--text-muted); font-style: italic;"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 6px;"></i> API 正在分析翻译中...</span>';
+  }
+  
   btnCopyTranslate.disabled = true;
   btnExportTranslate.disabled = true;
   
@@ -1983,7 +2000,7 @@ btnTextTranslate.addEventListener('click', async () => {
     const targetLang = selectTextTranslateLang.value;
     const res = await window.api.translateText(srcText, targetLang);
     if (res.success) {
-      divTranslateResult.textContent = res.text;
+      divTranslateResult.textContent = res.text; // 写入最终完整段落以清除光标
       btnCopyTranslate.disabled = false;
       btnExportTranslate.disabled = false;
     } else {
@@ -2197,5 +2214,29 @@ btnFullscreenTranslate.addEventListener('click', () => {
     btnFullscreenTranslate.innerHTML = '<i class="fa-solid fa-compress"></i> 退出全屏';
   } else {
     btnFullscreenTranslate.innerHTML = '<i class="fa-solid fa-expand"></i> 全屏';
+  }
+});
+
+// --- 纯文本流式翻译监听 ---
+let accumulatedTranslationText = '';
+window.api.onTranslateTextChunk((data) => {
+  const { chunk } = data;
+  accumulatedTranslationText += chunk;
+  divTranslateResult.innerHTML = `${accumulatedTranslationText}<span class="typing-cursor"></span>`;
+  divTranslateResult.scrollTop = divTranslateResult.scrollHeight;
+});
+
+// --- 安全退出与录音自动保存拦截 ---
+window.api.onAppCloseRequest(async () => {
+  if (isRecording) {
+    recordStatusText.textContent = '正在为您停止并保存当前录音，请勿关闭程序...';
+    recordStatusText.style.color = 'var(--danger)';
+    await stopRecording();
+    // 延迟 400ms 确保 wav/mp3 转换以及主进程写盘有充裕时间，随后强制退出
+    setTimeout(() => {
+      window.api.closeWindow();
+    }, 400);
+  } else {
+    window.api.closeWindow();
   }
 });
