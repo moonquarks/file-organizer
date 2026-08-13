@@ -292,6 +292,17 @@
               </div>
               
               <div id="record-status-text" style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top: 4px;">录音设备就绪，点击红色麦克风开始录音</div>
+              
+              <!-- 保存进度条 -->
+              <div id="save-progress-container" style="display: none; margin-top: 12px; width: 100%; max-width: 320px; background: rgba(0,0,0,0.2); border-radius: 6px; padding: 6px 8px; border: 1px solid rgba(255,255,255,0.05); margin-left: auto; margin-right: auto; box-sizing: border-box;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px;">
+                  <span>正在编码并压缩 MP3 格式...</span>
+                  <span id="save-progress-percent">0%</span>
+                </div>
+                <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden;">
+                  <div id="save-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary), var(--success)); border-radius: 3px; transition: width 0.1s ease;"></div>
+                </div>
+              </div>
             </div>
 
             <!-- Recordings List Card -->

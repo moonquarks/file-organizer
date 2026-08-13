@@ -57,6 +57,9 @@ const btnBack = document.getElementById('btn-back');
 const searchInput = document.getElementById('search-input');
 const btnNewFolder = document.getElementById('btn-new-folder');
 const btnOpenCurrentDir = document.getElementById('btn-open-current-dir');
+const saveProgressContainer = document.getElementById('save-progress-container');
+const saveProgressPercent = document.getElementById('save-progress-percent');
+const saveProgressBar = document.getElementById('save-progress-bar');
 
 // Settings page elements
 const inputRootPath = document.getElementById('input-root-path');
@@ -1659,7 +1662,22 @@ async function stopRecording() {
         const now = new Date();
         const filename = `Record_${formatDateForFile(now)}.mp3`;
         
+        // 显示并重置保存进度条
+        if (saveProgressContainer) {
+          saveProgressPercent.textContent = '0%';
+          saveProgressBar.style.width = '0%';
+          saveProgressContainer.style.display = 'block';
+        }
+        
         const res = await window.api.saveRecordFile(filename, new Uint8Array(arrayBuffer));
+        
+        // 隐藏进度条
+        if (saveProgressContainer) {
+          setTimeout(() => {
+            saveProgressContainer.style.display = 'none';
+          }, 500); // 留存 500ms 展示 100% 完成度
+        }
+
         if (res.success) {
           showToast('录音已保存为 MP3 压缩格式！');
           loadRecordingsList();
@@ -1667,6 +1685,9 @@ async function stopRecording() {
           showToast('保存录音失败: ' + res.error, true);
         }
       } catch (e) {
+        if (saveProgressContainer) {
+          saveProgressContainer.style.display = 'none';
+        }
         showToast('WAV 编码失败: ' + e.message, true);
       }
     }
@@ -2279,5 +2300,14 @@ window.api.onAppCloseRequest(async () => {
     }, 400);
   } else {
     window.api.closeWindow();
+  }
+});
+
+// --- 监听录音 MP3 压缩进度 ---
+window.api.onSaveRecordProgress((data) => {
+  const { percent } = data;
+  if (saveProgressPercent && saveProgressBar) {
+    saveProgressPercent.textContent = `${percent}%`;
+    saveProgressBar.style.width = `${percent}%`;
   }
 });

@@ -727,16 +727,29 @@ ipcMain.handle('save-record-file', async (event, filename, buffer) => {
           const leftChannel = new Int16Array(numSamples);
           const rightChannel = new Int16Array(numSamples);
           
-          for (let i = 0; i < numSamples; i++) {
-            leftChannel[i] = dataSub.readInt16LE(i * 4);
-            rightChannel[i] = dataSub.readInt16LE(i * 4 + 2);
+          // 1. 异步切片提取双声道数据 (0% ~ 20%)
+          const extractChunkSize = 500000;
+          for (let i = 0; i < numSamples; i += extractChunkSize) {
+            const end = Math.min(i + extractChunkSize, numSamples);
+            for (let j = i; j < end; j++) {
+              leftChannel[j] = dataSub.readInt16LE(j * 4);
+              rightChannel[j] = dataSub.readInt16LE(j * 4 + 2);
+            }
+            // 释放控制权，防止主线程卡死
+            await new Promise(resolve => setTimeout(resolve, 0));
+            const percent = Math.floor((i / numSamples) * 20);
+            event.sender.send('save-record-progress', { percent });
           }
           
           const lamejs = await import('@breezystack/lamejs');
           const mp3encoder = new lamejs.Mp3Encoder(2, sampleRate, 128); // 双声道，128kbps 立体声
           const mp3Chunks = [];
           
+          // 2. 异步切片编码 MP3 帧 (20% ~ 98%)
           const sampleBlockSize = 1152;
+          const encodeYieldBlocks = 2000; // 每 2000 个 block 释放一次主线程
+          let blockCount = 0;
+          
           for (let i = 0; i < numSamples; i += sampleBlockSize) {
             const leftChunk = leftChannel.subarray(i, i + sampleBlockSize);
             const rightChunk = rightChannel.subarray(i, i + sampleBlockSize);
@@ -744,11 +757,21 @@ ipcMain.handle('save-record-file', async (event, filename, buffer) => {
             if (mp3buf.length > 0) {
               mp3Chunks.push(Buffer.from(mp3buf));
             }
+            
+            blockCount++;
+            if (blockCount % encodeYieldBlocks === 0) {
+              await new Promise(resolve => setTimeout(resolve, 0));
+              const percent = 20 + Math.floor((i / numSamples) * 78);
+              event.sender.send('save-record-progress', { percent });
+            }
           }
+          
           const endBuf = mp3encoder.flush();
           if (endBuf.length > 0) {
             mp3Chunks.push(Buffer.from(endBuf));
           }
+          
+          event.sender.send('save-record-progress', { percent: 100 });
           
           const mp3Buffer = Buffer.concat(mp3Chunks);
           fs.writeFileSync(filePath, mp3Buffer);

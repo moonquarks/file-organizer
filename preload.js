@@ -30,5 +30,6 @@ contextBridge.exposeInMainWorld('api', {
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   maximizeWindow: () => ipcRenderer.send('window-maximize'),
   closeWindow: () => ipcRenderer.send('window-close'),
+  onSaveRecordProgress: (callback) => ipcRenderer.on('save-record-progress', (event, data) => callback(data)),
   onAppCloseRequest: (callback) => ipcRenderer.on('app-close-request', () => callback())
 });
