@@ -799,6 +799,7 @@ btnTranscribe.addEventListener('click', async () => {
   // 检查是否已有缓存
   if (transcriptionCache[track.fullPath]) {
     showToast('已加载缓存转写内容');
+    transcriptionTextContainer.textContent = transcriptionCache[track.fullPath];
     return;
   }
 
@@ -812,41 +813,115 @@ btnTranscribe.addEventListener('click', async () => {
   transcriptionTextContainer.innerHTML = `
     <div class="transcription-empty">
       <i class="fa-solid fa-spinner fa-spin" style="font-size: 3rem; margin-bottom: 12px; color: var(--primary);"></i>
-      <p>正在提交音频数据到云端进行高精度文本转写...</p>
-      <p style="font-size: 0.8rem; opacity: 0.7; margin-top: 4px;">由于文件可能较大，转录约需要 15 - 45 秒，请稍后</p>
+      <p id="transcribe-progress-text">正在从磁盘加载音频数据...</p>
+      <div id="transcribe-progress-bar-container" style="width: 100%; max-width: 250px; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; margin: 12px auto 0; overflow: hidden; display: none;">
+        <div id="transcribe-progress-bar-fill" style="width: 0%; height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.3s ease;"></div>
+      </div>
+      <p style="font-size: 0.8rem; opacity: 0.7; margin-top: 8px;">超长音频将自动切分为10分钟片段进行流水线转写，请稍后</p>
     </div>
   `;
 
+  const progressText = document.getElementById('transcribe-progress-text');
+  const progressContainer = document.getElementById('transcribe-progress-bar-container');
+  const progressFill = document.getElementById('transcribe-progress-bar-fill');
+  let tempCtx = null;
+
   try {
-    const res = await window.api.transcribeAudio(track.fullPath);
-    if (res.success) {
-      showToast('音频转文字成功！');
-      transcriptionCache[track.fullPath] = res.text;
-      transcriptionTextContainer.textContent = res.text;
-    } else {
-      if (res.error === 'TRANSCRIPTION_ABORTED') {
-        // 如果是中途取消/切换文件，我们静默忽略，不进行任何 UI 报错渲染
-        console.log('Transcription aborted.');
-        return;
-      }
-      showToast('转写失败: ' + res.error, true);
-      transcriptionTextContainer.innerHTML = `
-        <div class="transcription-empty" style="color: var(--danger);">
-          <i class="fa-solid fa-triangle-exclamation" style="font-size: 3rem; margin-bottom: 12px;"></i>
-          <p>转录失败</p>
-          <p style="font-size: 0.8rem; margin-top: 4px;">${res.error}</p>
-        </div>
-      `;
+    // 1. 获取本地音频 ArrayBuffer
+    progressText.textContent = '正在从磁盘加载音频文件...';
+    const response = await fetch(`app-file:///${track.fullPath.replace(/\\/g, '/')}`);
+    if (!response.ok) {
+      throw new Error(`加载音频文件失败: HTTP ${response.status}`);
     }
+    const arrayBuffer = await response.arrayBuffer();
+
+    // 2. 解码音频文件
+    progressText.textContent = '正在解析音频通道数据（可能需要几秒钟）...';
+    tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+    
+    const durationSec = audioBuffer.duration;
+    const sampleRate = audioBuffer.sampleRate;
+    
+    // 3. 计算切片参数（以 10 分钟 = 600 秒为基准）
+    const sliceDuration = 600;
+    const totalSlices = Math.ceil(durationSec / sliceDuration);
+    
+    const mTotal = Math.floor(durationSec / 60);
+    const sTotal = Math.floor(durationSec % 60);
+    progressText.textContent = `音频时长：${mTotal}分${sTotal}秒，已自动切分为 ${totalSlices} 个片段。正在准备转写...`;
+    if (progressContainer) progressContainer.style.display = 'block';
+
+    const previousTexts = [];
+    
+    // 4. 按顺序逐片转录
+    for (let i = 0; i < totalSlices; i++) {
+      const startSec = i * sliceDuration;
+      const endSec = Math.min((i + 1) * sliceDuration, durationSec);
+      const segmentDuration = endSec - startSec;
+      const numSamples = Math.floor(segmentDuration * sampleRate);
+      
+      const mStart = Math.floor(startSec / 60);
+      const sStart = Math.floor(startSec % 60);
+      const mEnd = Math.floor(endSec / 60);
+      const sEnd = Math.floor(endSec % 60);
+      
+      progressText.textContent = `正在转录第 ${i + 1}/${totalSlices} 个片段 (${String(mStart).padStart(2,'0')}:${String(sStart).padStart(2,'0')} - ${String(mEnd).padStart(2,'0')}:${String(sEnd).padStart(2,'0')})...`;
+      if (progressFill) {
+        progressFill.style.width = `${Math.floor((i / totalSlices) * 100)}%`;
+      }
+
+      // 提取该切片的声道 PCM Float 数据
+      const startSample = Math.floor(startSec * sampleRate);
+      const leftChannel = audioBuffer.getChannelData(0).subarray(startSample, startSample + numSamples);
+      const rightChannel = audioBuffer.numberOfChannels > 1
+        ? audioBuffer.getChannelData(1).subarray(startSample, startSample + numSamples)
+        : leftChannel;
+      
+      // 打包并转化为 WAV 二进制格式
+      const wavBlob = exportWAV([{ left: leftChannel, right: rightChannel }], sampleRate);
+      const segmentArrayBuffer = await wavBlob.arrayBuffer();
+
+      // 发送至主进程转录（带上前序上下文）
+      const res = await window.api.transcribeAudio(track.fullPath, {
+        chunkBuffer: new Uint8Array(segmentArrayBuffer),
+        mimeType: 'audio/wav',
+        previousTexts: previousTexts
+      });
+
+      if (res.success) {
+        previousTexts.push(res.text.trim());
+      } else {
+        if (res.error === 'TRANSCRIPTION_ABORTED') {
+          console.log('Transcription aborted.');
+          return;
+        }
+        throw new Error(`片段 ${i + 1} 转写失败: ${res.error}`);
+      }
+    }
+
+    // 5. 转写全部成功，合并结果
+    const finalResultText = previousTexts.join('\n\n');
+    if (progressFill) {
+      progressFill.style.width = '100%';
+    }
+    showToast('音频分片转录全部完成！');
+    transcriptionCache[track.fullPath] = finalResultText;
+    transcriptionTextContainer.textContent = finalResultText;
+
   } catch (err) {
     showToast('转写发生错误: ' + err, true);
     transcriptionTextContainer.innerHTML = `
       <div class="transcription-empty" style="color: var(--danger);">
         <i class="fa-solid fa-triangle-exclamation" style="font-size: 3rem; margin-bottom: 12px;"></i>
-        <p>转写失败: ${err}</p>
+        <p>转录失败</p>
+        <p style="font-size: 0.8rem; margin-top: 4px;">${err.message || err}</p>
       </div>
     `;
   } finally {
+    if (tempCtx && tempCtx.state !== 'closed') {
+      tempCtx.close();
+    }
     btnTranscribe.disabled = false;
   }
 });

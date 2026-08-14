@@ -477,7 +477,7 @@ ipcMain.handle('abort-transcription', () => {
   return { success: true };
 });
 
-ipcMain.handle('transcribe-audio', async (event, filePath) => {
+ipcMain.handle('transcribe-audio', async (event, filePath, options = {}) => {
   if (transcribeAbortController) {
     try {
       transcribeAbortController.abort();
@@ -490,17 +490,39 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
     if (!currentConfig.apiKey) {
       return { success: false, error: '请先在工作区“设置”中配置您的 API Key。' };
     }
-    if (!fs.existsSync(filePath)) {
-      return { success: false, error: '音频文件在磁盘上不存在。' };
+
+    let bufferToUse;
+    let mimeTypeToUse;
+    let fileNameToUse;
+
+    if (options.chunkBuffer) {
+      // 从渲染进程传入的 WAV 分片 Buffer
+      bufferToUse = Buffer.from(options.chunkBuffer);
+      mimeTypeToUse = options.mimeType || 'audio/wav';
+      fileNameToUse = 'chunk.wav';
+    } else {
+      // 降级回退：读取本地文件
+      if (!fs.existsSync(filePath)) {
+        return { success: false, error: '音频文件在磁盘上不存在。' };
+      }
+      bufferToUse = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      mimeTypeToUse = 'audio/mp3';
+      if (ext === '.ogg') mimeTypeToUse = 'audio/ogg';
+      if (ext === '.wav') mimeTypeToUse = 'audio/wav';
+      fileNameToUse = path.basename(filePath);
     }
 
-    const ext = path.extname(filePath).toLowerCase();
-    let mimeType = 'audio/mp3';
-    if (ext === '.ogg') mimeType = 'audio/ogg';
-    if (ext === '.wav') mimeType = 'audio/wav';
+    // 组装前序转录上下文（最长合并前 5 段），便于 API 在转写当前片段时对齐术语/人名/衔接语境
+    let contextPrompt = '';
+    if (options.previousTexts && options.previousTexts.length > 0) {
+      const lastContexts = options.previousTexts.slice(-5);
+      contextPrompt = `以下是该音频前序段落的已转录文本内容（作为术语对齐与连贯语境的参考，请保持人名、学术背景和句式风格一致）：\n${lastContexts.join('\n')}\n\n`;
+    }
+    const promptText = `${contextPrompt}请对这个音频片段进行精准的中文/英文文本转录。请智能区分发言段落（如果有多人对话），直接输出纯转录文本，不要带任何标题、Markdown标题、总结或废话。`;
 
     if (currentConfig.apiType === 'gemini') {
-      const base64Data = fs.readFileSync(filePath).toString('base64');
+      const base64Data = bufferToUse.toString('base64');
       const baseUrl = currentConfig.apiBaseUrl || 'https://generativelanguage.googleapis.com';
       const modelName = currentConfig.apiModel || 'gemini-1.5-flash';
       const url = `${baseUrl}/v1/models/${modelName}:generateContent?key=${currentConfig.apiKey}`;
@@ -513,12 +535,12 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
             parts: [
               {
                 inlineData: {
-                  mimeType: mimeType,
+                  mimeType: mimeTypeToUse,
                   data: base64Data
                 }
               },
               {
-                text: "请对这个音频文件进行精准的中文/英文文本转录。请智能区分发言段落（如果有多人对话），直接输出纯转录文本，不要带任何标题、Markdown标题、总结或废话。"
+                text: promptText
               }
             ]
           }]
@@ -534,7 +556,7 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
       const json = await response.json();
       const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) {
-        return { success: false, error: 'Gemini API 返回了空内容，请检查音频文件。' };
+        return { success: false, error: 'Gemini API 返回了空内容，请检查音频数据。' };
       }
       return { success: true, text };
 
@@ -549,10 +571,15 @@ ipcMain.handle('transcribe-audio', async (event, filePath) => {
       url = `${url}/audio/transcriptions`;
 
       const formData = new FormData();
-      const fileBuffer = fs.readFileSync(filePath);
-      const fileBlob = new Blob([fileBuffer], { type: mimeType });
-      formData.append('file', fileBlob, path.basename(filePath));
+      const fileBlob = new Blob([bufferToUse], { type: mimeTypeToUse });
+      formData.append('file', fileBlob, fileNameToUse);
       formData.append('model', 'whisper-1');
+
+      if (options.previousTexts && options.previousTexts.length > 0) {
+        // Whisper prompt 参数最多接受 224 个 token 的上下文指示，我们传入最近 2 段历史文本
+        const lastContext = options.previousTexts.slice(-2).join(' ');
+        formData.append('prompt', lastContext);
+      }
 
       const response = await fetch(url, {
         method: 'POST',
